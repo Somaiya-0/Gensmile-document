@@ -4,7 +4,7 @@ from uuid import UUID
 from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, Integer, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin, utc_now
 
 
 class PatientDocument(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -12,8 +12,10 @@ class PatientDocument(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     Two independent sharing mechanisms live on this model:
       - share_token / is_shared   -> doctor-to-doctor: the same form fields/
-        values as the patient self-fill view, but read-only (see
-        PatientDocumentPublicRead), plus attached files.
+        values as the patient self-fill view (see PatientDocumentPublicRead),
+        plus attached files. Editable by any doctor/staff account that logs
+        in through the link; every edit is written to
+        PatientDocumentChangeLog.
       - fill_token / fill_enabled -> patient self-fill: exposes every
         active field in this document's form_config, editable, no auth required.
     """
@@ -141,4 +143,42 @@ class PatientDocumentFile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     document: Mapped["PatientDocument"] = relationship(
         back_populates="files",
+    )
+
+
+class PatientDocumentChangeLog(UUIDPrimaryKeyMixin, Base):
+    """One audit entry for an edit made to a document -- who changed what,
+    from what value to what value. Populated for both the owning doctor's
+    own edits and another doctor's edits through the doctor-to-doctor share
+    link, so anyone opening that link sees the full history, not just what
+    changed after they joined.
+
+    Immutable once written (no updated_at) -- a log entry describes a single
+    past event and is never itself edited.
+    """
+
+    __tablename__ = "patient_document_change_logs"
+
+    document_id: Mapped[UUID] = mapped_column(
+        ForeignKey("patient_documents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # Nullable + a separate name snapshot: the log must still read correctly
+    # if the acting account is later deleted.
+    changed_by_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("user_accounts.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    changed_by_name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    change_type: Mapped[str] = mapped_column(String(20), nullable=False)  # "value" | "settings"
+    field_key: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    field_label: Mapped[str] = mapped_column(String(255), nullable=False)
+    old_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    new_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False, index=True,
     )

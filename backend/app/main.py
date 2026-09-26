@@ -66,8 +66,9 @@ Most endpoints require a **Bearer JWT** access token. Obtain one via `POST /api/
 and pass it in the `Authorization` header (`Authorization: Bearer <access_token>`).
 Use `POST /api/v1/auth/refresh` with the refresh token to get a new pair without logging in again.
 
-The patient fill-in (`/patient-document/{fill_token}`) and doctor-to-doctor share
-(`/doctor-to-doctor/documents/{share_token}`) endpoints need no login -- the token in the link is the key.
+The patient fill-in (`/patient-document/{fill_token}`) endpoints need no login -- the
+token in the link is the key. The doctor-to-doctor share (`/doctor-to-doctor/documents/{share_token}`)
+endpoints DO require login -- any doctor or staff account -- once the link is opened.
 
 ### Error format
 

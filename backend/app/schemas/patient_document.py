@@ -127,11 +127,31 @@ class PatientDocumentRead(PatientDocumentBase):
     updated_at: datetime
 
 
+class PatientDocumentChangeLogRead(BaseModel):
+    """One audit-trail entry: who changed what, from what value to what
+    value. Shown on the doctor-to-doctor share page so every doctor who
+    opens it sees who last touched the form and its settings."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    changed_by_name: str
+    change_type: str  # "value" | "settings"
+    field_key: str | None = None
+    field_label: str
+    old_value: str | None = None
+    new_value: str | None = None
+    created_at: datetime
+
+
 class PatientDocumentPublicRead(BaseModel):
     """Doctor-to-doctor view: the same form fields/values and attached files
-    the patient sees on their own self-fill link (PatientFillFormRead), read-only.
-    Kept as a separate schema from PatientDocumentRead so the doctor-to-doctor
-    route never accidentally exposes anything beyond what's rendered here."""
+    the patient sees on their own self-fill link (PatientFillFormRead), plus
+    the change history. Editable by any doctor/staff account that logs in --
+    see the authenticated /doctor-to-doctor/documents/{share_token} routes.
+    Kept as a separate schema from PatientDocumentRead so this route never
+    accidentally exposes anything beyond what's rendered here (e.g. the
+    document's own share_token/fill_token)."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -145,6 +165,7 @@ class PatientDocumentPublicRead(BaseModel):
     fields: list[dict] = []
     values: dict = {}
     files: list[PatientDocumentFileRead] = []
+    changes: list[PatientDocumentChangeLogRead] = []
 
 
 class PatientFillFormRead(BaseModel):

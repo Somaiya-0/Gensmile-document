@@ -17,6 +17,7 @@ from app.controllers.patient_document_controller import (
     delete_patient_document,
     delete_patient_fill_file,
     get_document_form_config,
+    get_document_form_config_by_share_token,
     get_patient_document,
     get_patient_document_public_doctor,
     get_patient_fill_document,
@@ -27,7 +28,9 @@ from app.controllers.patient_document_controller import (
     submit_patient_fill_document,
     toggle_document_sharing,
     toggle_fill_enabled,
+    update_document_by_share_token,
     update_document_form_config,
+    update_document_form_config_by_share_token,
     update_patient_document,
     upload_document_file,
     upload_document_logo,
@@ -322,7 +325,9 @@ async def update_document_form_config_route(
 # which is scoped to everything a doctor can see, each of these is scoped to
 # the ONE document its token unlocks, via document_events.add_document (see
 # DocumentEventsManager) -- a viewer never learns about the doctor's other
-# documents changing.
+# documents changing. (The doctor-to-doctor page's own GET/PATCH/form-config
+# routes DO require login -- see the "Doctor-to-doctor" section below -- only
+# this live-update ping and the patient self-fill routes stay token-only.)
 
 async def _serve_document_scoped_ws(websocket: WebSocket, document_id: UUID | None) -> None:
     await websocket.accept()
@@ -369,33 +374,102 @@ async def patient_fill_document_live_updates(
     await _serve_document_scoped_ws(websocket, document_id)
 
 
+# ─── Doctor-to-doctor (login required) ─────────────────────────────────────
+#
+# The share link is no longer anonymous: whoever opens it must sign in with a
+# doctor or staff account (any such account, not just the document's owner --
+# see _require_doctor) before they can view or edit the form. Every edit made
+# here (or by the owner through their own dashboard) is written to this
+# document's change log, which every doctor with the link can see.
+
 @router.get(
     "/doctor-to-doctor/documents/{share_token}",
     response_model=PatientDocumentPublicRead,
     status_code=status.HTTP_200_OK,
-    responses=_404,
+    responses={**_AUTH, **_404},
 )
 async def get_doctor_to_doctor_document(
     share_token: str,
+    current_user: Annotated[UserAccount, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> PatientDocumentPublicRead:
-    """Public: another doctor opens a doctor-to-doctor share link."""
-    document = await get_patient_document_public_doctor(db=db, share_token=share_token)
+    """Doctor-authenticated: another doctor opens a doctor-to-doctor share
+    link and signs in first."""
+    document = await get_patient_document_public_doctor(db=db, user=current_user, share_token=share_token)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found or no longer available")
     return document
 
 
-@router.get("/doctor-to-doctor/documents/{share_token}/download-zip", responses=_404)
+@router.patch(
+    "/doctor-to-doctor/documents/{share_token}",
+    response_model=PatientDocumentPublicRead,
+    status_code=status.HTTP_200_OK,
+    responses={**_AUTH, **_404},
+)
+async def update_doctor_to_doctor_document(
+    share_token: str,
+    payload: PatientDocumentUpdate,
+    current_user: Annotated[UserAccount, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> PatientDocumentPublicRead:
+    """Doctor-authenticated: edit the shared form's values. Logged to this
+    document's change log under the signed-in doctor's name."""
+    document = await update_document_by_share_token(db=db, user=current_user, share_token=share_token, payload=payload)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found or no longer available")
+    return document
+
+
+@router.get(
+    "/doctor-to-doctor/documents/{share_token}/form-config",
+    status_code=status.HTTP_200_OK,
+    responses={**_AUTH, **_404},
+)
+async def get_doctor_to_doctor_form_config_route(
+    share_token: str,
+    current_user: Annotated[UserAccount, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> dict:
+    """Doctor-authenticated: form config for the "Edit Form" settings modal."""
+    config = await get_document_form_config_by_share_token(db=db, user=current_user, share_token=share_token)
+    if config is None:
+        raise HTTPException(status_code=404, detail="Document not found or no longer available")
+    return {"fields": config}
+
+
+@router.put(
+    "/doctor-to-doctor/documents/{share_token}/form-config",
+    status_code=status.HTTP_200_OK,
+    responses={**_AUTH, **_404},
+)
+async def update_doctor_to_doctor_form_config_route(
+    share_token: str,
+    payload: DocumentFormConfigUpdate,
+    current_user: Annotated[UserAccount, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> dict:
+    """Doctor-authenticated: edit the shared form's field settings. Logged to
+    this document's change log under the signed-in doctor's name."""
+    config = await update_document_form_config_by_share_token(
+        db=db, user=current_user, share_token=share_token, fields=payload.fields
+    )
+    if config is None:
+        raise HTTPException(status_code=404, detail="Document not found or no longer available")
+    return {"fields": config}
+
+
+@router.get("/doctor-to-doctor/documents/{share_token}/download-zip", responses={**_AUTH, **_404})
 async def download_doctor_to_doctor_zip_route(
     share_token: str,
+    current_user: Annotated[UserAccount, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> StreamingResponse:
-    """Public: another doctor downloads the form PDF + attached files (just
-    the PDF, unzipped, when there are no attached files) from a
-    doctor-to-doctor share link."""
+    """Doctor-authenticated: another doctor downloads the form PDF +
+    attached files (just the PDF, unzipped, when there are no attached
+    files) from a doctor-to-doctor share link."""
     try:
-        result = await build_patient_document_public_zip(db=db, share_token=share_token)
+        result = await build_patient_document_public_zip(db=db, share_token=share_token, user=current_user)
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
     if not result:

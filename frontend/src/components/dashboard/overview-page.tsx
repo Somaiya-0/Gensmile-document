@@ -98,7 +98,7 @@ export function OverviewPage() {
         <QuickLink
           to="/dashboard/doctor-to-doctor"
           title="Doctor to Doctor"
-          description="Share a read-only copy of a patient document with another doctor."
+          description="Share a patient document with another doctor -- they sign in to view and edit it."
           icon={Stethoscope}
         />
         <QuickLink

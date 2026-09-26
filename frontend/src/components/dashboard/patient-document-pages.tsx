@@ -20,6 +20,7 @@ import {
   toggleFillLink, getDocumentFormConfig, updateDocumentFormConfig,
   getFormConfig, updateFormConfig, getPatients,
   downloadPatientDocumentZip,
+  getDoctorToDoctorFormConfig, updateDoctorToDoctorFormConfig,
 } from "@/lib/api-client"
 import type {
   DoctorPatient, FieldConfig, PatientDocumentCreate, PatientDocumentFileRead, PatientDocumentRead,
@@ -295,14 +296,20 @@ async function downloadAllAsZip(documentId: string, token: string, _files: Patie
 
 // ─── Form Settings Modal (per-document or doctor default) ─────────────────
 
-function FormSettingsModal({
-  isOpen, onClose, documentId, onSaved, isDefault = false,
+export function FormSettingsModal({
+  isOpen, onClose, documentId, onSaved, isDefault = false, shareToken = null,
 }: {
   isOpen: boolean
   onClose: () => void
   documentId: string | null
   onSaved?: () => void
   isDefault?: boolean
+  // Set when this modal is opened from the doctor-to-doctor share page
+  // instead of the owner's own dashboard: reads/writes go through the
+  // share-token-scoped routes (any signed-in doctor, not just the owner),
+  // and never touch the owner's doctor-wide default template -- a visiting
+  // doctor has no default template of their own to update.
+  shareToken?: string | null
 }) {
   const token = useToken()
   const [fields, setFields] = useState<FieldConfig[]>([])
@@ -314,7 +321,11 @@ function FormSettingsModal({
   const loadFields = useCallback(async () => {
     setLoading(true)
     try {
-      const data = isDefault ? await getFormConfig(token) : await getDocumentFormConfig(token, documentId as string)
+      const data = shareToken
+        ? await getDoctorToDoctorFormConfig(token, shareToken)
+        : isDefault
+          ? await getFormConfig(token)
+          : await getDocumentFormConfig(token, documentId as string)
       const sorted = [...data.fields].sort((a, b) => a.order - b.order)
       setFields(sorted)
       if (sorted.length > 0) setExpandedSection(sorted[0].section || "Overview")
@@ -323,7 +334,7 @@ function FormSettingsModal({
     } finally {
       setLoading(false)
     }
-  }, [documentId, isDefault, token])
+  }, [documentId, isDefault, shareToken, token])
 
   useEffect(() => {
     if (isOpen) loadFields()
@@ -338,7 +349,9 @@ function FormSettingsModal({
     setSaving(true)
     try {
       const ordered = nextFields.map((f, i) => ({ ...f, order: i + 1 }))
-      if (isDefault) {
+      if (shareToken) {
+        await updateDoctorToDoctorFormConfig(token, shareToken, { fields: ordered })
+      } else if (isDefault) {
         await updateFormConfig(token, { fields: ordered })
       } else {
         await updateDocumentFormConfig(token, documentId as string, { fields: ordered })
@@ -1043,7 +1056,7 @@ function ShareToDoctorPanel({
   const panelSubtitle =
     context === "doctor-to-patient"
       ? "Pick the patient and send them a link to fill in."
-      : "Pick the patient and generate a secure view-only link."
+      : "Pick the patient and generate a secure link -- the other doctor signs in to view and edit it."
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4 shadow-sm">
@@ -1157,7 +1170,7 @@ function ShareToDoctorPanel({
       <div className="text-[11px] text-green-700 bg-green-50 border border-green-200 rounded-lg p-2.5">
         {context === "doctor-to-patient"
           ? "Patient gets a link to fill in and submit their own information."
-          : "Receiving doctor gets a view-only document with print & download all — no editing."}
+          : "Receiving doctor must sign in with their own account, then can view, edit, and change form settings — every edit is logged with their name."}
       </div>
 
       {showNewPatientModal && (

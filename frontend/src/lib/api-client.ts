@@ -224,15 +224,52 @@ export async function updateFormConfig(token: string, payload: FormConfigUpdate)
   })
 }
 
-// Public (no auth): another doctor opening a doctor-to-doctor share link.
-export async function getDoctorToDoctorDocument(shareToken: string): Promise<PatientDocumentPublicRead> {
-  return apiRequest<PatientDocumentPublicRead>(`/doctor-to-doctor/documents/${shareToken}`)
+// Doctor-authenticated: another doctor opening a doctor-to-doctor share
+// link, having signed in first (any doctor/staff account, not just the
+// document's owner).
+export async function getDoctorToDoctorDocument(token: string, shareToken: string): Promise<PatientDocumentPublicRead> {
+  return apiRequest<PatientDocumentPublicRead>(`/doctor-to-doctor/documents/${shareToken}`, {
+    headers: authHeaders(token),
+  })
 }
 
-export async function downloadDoctorToDoctorZip(shareToken: string): Promise<Blob> {
-  const response = await fetch(`${getApiBaseUrl()}/doctor-to-doctor/documents/${shareToken}/download-zip`, {
-    cache: "no-store",
+export async function updateDoctorToDoctorDocument(
+  token: string,
+  shareToken: string,
+  payload: PatientDocumentUpdate,
+): Promise<PatientDocumentPublicRead> {
+  return apiRequest<PatientDocumentPublicRead>(`/doctor-to-doctor/documents/${shareToken}`, {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: payload,
   })
+}
+
+export async function getDoctorToDoctorFormConfig(
+  token: string,
+  shareToken: string,
+): Promise<{ fields: FieldConfig[] }> {
+  return apiRequest<{ fields: FieldConfig[] }>(`/doctor-to-doctor/documents/${shareToken}/form-config`, {
+    headers: authHeaders(token),
+  })
+}
+
+export async function updateDoctorToDoctorFormConfig(
+  token: string,
+  shareToken: string,
+  payload: DocumentFormConfigUpdate,
+): Promise<{ fields: FieldConfig[] }> {
+  return apiRequest<{ fields: FieldConfig[] }>(`/doctor-to-doctor/documents/${shareToken}/form-config`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: payload,
+  })
+}
+
+export async function downloadDoctorToDoctorZip(token: string, shareToken: string): Promise<Blob> {
+  const response = await fetchWithAuthRetry(`${getApiBaseUrl()}/doctor-to-doctor/documents/${shareToken}/download-zip`, {
+    cache: "no-store",
+  }, token)
   if (!response.ok) throw new ApiError("Couldn't download zip", response.status, await response.text())
   return response.blob()
 }

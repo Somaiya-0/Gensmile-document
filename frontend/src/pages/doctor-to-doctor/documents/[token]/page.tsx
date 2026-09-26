@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
-import { useParams, Link } from "react-router-dom"
+import { useParams, useNavigate, useLocation, Link } from "react-router-dom"
+import Swal from "sweetalert2"
 import {
   FileText,
   Image as ImageIcon,
@@ -12,13 +13,26 @@ import {
   Calendar,
   Stethoscope,
   ArrowLeft,
+  Pencil,
+  Settings,
+  History,
+  LogOut,
 } from "lucide-react"
-import { downloadDoctorToDoctorZip, getDoctorToDoctorDocument } from "@/lib/api-client"
+import {
+  downloadDoctorToDoctorZip, getDoctorToDoctorDocument, updateDoctorToDoctorDocument,
+} from "@/lib/api-client"
+import { FormSettingsModal } from "@/components/dashboard/patient-document-pages"
 import { usePublicDocumentLiveUpdates } from "@/hooks/use-public-document-live-updates"
 import { saveBlobAsFile } from "@/lib/utils"
+import { useAuthStore } from "@/stores/auth-store"
+import { PageLoader } from "@/components/ui/spinner"
 import type { FieldConfig, PatientDocumentFileRead, PatientDocumentPublicRead } from "@/lib/api-types"
 
 const SECTION_ORDER_FALLBACK = 999
+
+function errMsg(e: unknown): string {
+  return e instanceof Error ? e.message : "Something went wrong."
+}
 
 function formatFileSize(bytes: number) {
   if (bytes === 0) return "0 Bytes"
@@ -34,6 +48,12 @@ function formatDate(dateString: string | null | undefined) {
   return date.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
 }
 
+function formatDateTime(dateString: string) {
+  return new Date(dateString).toLocaleString("en-US", {
+    year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+  })
+}
+
 function isImageFile(file: PatientDocumentFileRead) {
   return file.file_type === "image" || !!file.file_name?.match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i)
 }
@@ -42,31 +62,56 @@ function isPdfFile(file: PatientDocumentFileRead) {
   return file.file_type === "pdf" || !!file.file_name?.match(/\.pdf$/i)
 }
 
-// Read-only rendering of one form field, matching the input layout the
-// patient sees on their own self-fill link (PatientFillFormPage) -- just
-// disabled, since another doctor viewing this share link can see the
-// patient's answers but never edit them.
-function DisabledField({ field, value }: { field: FieldConfig; value: unknown }) {
+// One editable field, matching the input layout the patient sees on their
+// own self-fill link -- but live (not disabled), since a doctor who signed
+// in through this link can now change these values, same as the document's
+// owner can from their own dashboard.
+function EditableField({
+  field, value, editing, onChange,
+}: {
+  field: FieldConfig
+  value: unknown
+  editing: boolean
+  onChange: (value: unknown) => void
+}) {
+  const displayValue = field.type === "checkbox" ? (value ? "Yes" : "No") : (value as string) || "—"
+
+  if (!editing) {
+    return (
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">{field.label}</label>
+        <div className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-700 min-h-[46px] whitespace-pre-wrap flex items-center">
+          {displayValue}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1.5">{field.label}</label>
       {field.type === "checkbox" ? (
         <div className="flex items-center gap-2">
-          <input type="checkbox" checked={!!value} disabled className="w-5 h-5 text-blue-600 border-gray-300 rounded" />
+          <input
+            type="checkbox"
+            checked={!!value}
+            onChange={(e) => onChange(e.target.checked)}
+            className="w-5 h-5 text-blue-600 border-gray-300 rounded"
+          />
           <span className="text-sm text-gray-600">{value ? "Yes" : "No"}</span>
         </div>
       ) : field.type === "textarea" ? (
         <textarea
           value={(value as string) || ""}
-          disabled
+          onChange={(e) => onChange(e.target.value)}
           rows={3}
-          className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-700 outline-none resize-none"
+          className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-500 outline-none resize-none"
         />
       ) : field.type === "select" ? (
         <select
           value={(value as string) || ""}
-          disabled
-          className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-700 outline-none"
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-500 outline-none"
         >
           <option value="">—</option>
           {(field.options || []).map((opt) => (
@@ -79,9 +124,37 @@ function DisabledField({ field, value }: { field: FieldConfig; value: unknown })
         <input
           type={field.type === "date" ? "date" : "text"}
           value={(value as string) || ""}
-          disabled
-          className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-700 outline-none"
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-500 outline-none"
         />
+      )}
+    </div>
+  )
+}
+
+function PatientInfoField({
+  label, type = "text", value, editing, onChange,
+}: {
+  label: string
+  type?: string
+  value: string
+  editing: boolean
+  onChange: (value: string) => void
+}) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
+      {editing ? (
+        <input
+          type={type}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-500 outline-none"
+        />
+      ) : (
+        <div className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-700 min-h-[46px] flex items-center">
+          {value || "—"}
+        </div>
       )}
     </div>
   )
@@ -90,19 +163,83 @@ function DisabledField({ field, value }: { field: FieldConfig; value: unknown })
 export default function DoctorToDoctorSharePage() {
   const params = useParams()
   const token = params?.token as string
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  const hydrated = useAuthStore((s) => s.hydrated)
+  const accessToken = useAuthStore((s) => s.accessToken)
+  const currentUser = useAuthStore((s) => s.user)
+  const logout = useAuthStore((s) => s.logout)
 
   const [document, setDocument] = useState<PatientDocumentPublicRead | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [loadErrorStatus, setLoadErrorStatus] = useState<number | null>(null)
   const [previewFile, setPreviewFile] = useState<PatientDocumentFileRead | null>(null)
   const [downloading, setDownloading] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [values, setValues] = useState<Record<string, unknown>>({})
+  const [showFormSettings, setShowFormSettings] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+
+  // Not signed in -- send them to sign in first, then straight back here.
+  useEffect(() => {
+    if (!hydrated) return
+    if (!accessToken) {
+      navigate(`/signin?redirect=${encodeURIComponent(location.pathname)}`, { replace: true })
+    }
+  }, [hydrated, accessToken, navigate, location.pathname])
+
+  const loadValuesFromDocument = useCallback((doc: PatientDocumentPublicRead) => {
+    setValues({ ...doc.values, visit_date: doc.visit_date ? doc.visit_date.split("T")[0] : "" })
+  }, [])
+
+  useEffect(() => {
+    if (!hydrated || !accessToken || !token) return
+    setLoading(true)
+    setLoadError(null)
+    setLoadErrorStatus(null)
+    getDoctorToDoctorDocument(accessToken, token)
+      .then((data) => {
+        setDocument(data)
+        loadValuesFromDocument(data)
+      })
+      .catch((error) => {
+        setLoadErrorStatus(error?.status ?? null)
+        setLoadError(
+          error?.status === 404
+            ? "This shared link is no longer available."
+            : error?.status === 403
+              ? "This link is for doctor or staff accounts only."
+              : error?.message || "Failed to load document."
+        )
+      })
+      .finally(() => setLoading(false))
+  }, [hydrated, accessToken, token, loadValuesFromDocument])
+
+  // Silent counterpart used for the live-update refetch below -- no loading
+  // spinner. Skips while mid-edit so another doctor's save (or this
+  // doctor's own PATCH round-trip) never overwrites what's being typed.
+  const refreshDocument = useCallback(() => {
+    if (!accessToken || !token || editing) return
+    getDoctorToDoctorDocument(accessToken, token)
+      .then((data) => {
+        setDocument(data)
+        loadValuesFromDocument(data)
+      })
+      .catch(() => {})
+  }, [accessToken, token, editing, loadValuesFromDocument])
+
+  // Instant: updates the moment any doctor (including this one, from another
+  // tab) changes the document, no reload needed.
+  usePublicDocumentLiveUpdates(token ? `/doctor-to-doctor/documents/${token}/ws` : null, refreshDocument)
 
   const handleDownloadZip = async () => {
-    if (!token) return
+    if (!token || !accessToken) return
     setDownloading(true)
     try {
-      // No attached files -> the backend sends just the form PDF, not a zip.
-      const blob = await downloadDoctorToDoctorZip(token)
+      const blob = await downloadDoctorToDoctorZip(accessToken, token)
       const isPdf = blob.type === "application/pdf"
       await saveBlobAsFile(blob, `${document?.patient_name || "patient"}${isPdf ? "_form.pdf" : "_documents.zip"}`)
     } catch {
@@ -112,35 +249,56 @@ export default function DoctorToDoctorSharePage() {
     }
   }
 
-  // Silent counterpart used for the live-update refetch below -- no
-  // loading spinner, and never surfaces a "not found" state: this page is
-  // read-only, so a background refetch simply skips a transient failure
-  // rather than replacing a document the doctor is currently looking at
-  // with an error screen.
-  const refreshDocument = useCallback(() => {
-    if (!token) return
-    getDoctorToDoctorDocument(token).then((data) => setDocument(data)).catch(() => {})
-  }, [token])
+  const handleStartEdit = () => {
+    if (document) loadValuesFromDocument(document)
+    setEditing(true)
+  }
 
-  useEffect(() => {
-    if (!token) return
-    setLoading(true)
-    setLoadError(null)
-    getDoctorToDoctorDocument(token)
-      .then((data) => setDocument(data))
-      .catch((error) => {
-        setLoadError(
-          error?.status === 404
-            ? "This shared link is no longer available."
-            : error?.message || "Failed to load document."
-        )
-      })
-      .finally(() => setLoading(false))
-  }, [token])
+  const handleCancelEdit = () => {
+    if (document) loadValuesFromDocument(document)
+    setEditing(false)
+  }
 
-  // Instant: this read-only page updates the moment the doctor changes the
-  // document elsewhere, no reload needed.
-  usePublicDocumentLiveUpdates(token ? `/doctor-to-doctor/documents/${token}/ws` : null, refreshDocument)
+  const handleSave = async () => {
+    if (!document || !accessToken || !token) return
+    setSaving(true)
+    try {
+      const customFields: Record<string, unknown> = {}
+      const payload: Record<string, unknown> = {
+        patient_name: values.patient_name,
+        patient_email: values.patient_email || null,
+        patient_phone: values.patient_phone || null,
+        visit_date: values.visit_date || null,
+      }
+      for (const field of document.fields) {
+        if (field.core) {
+          payload[field.key] = values[field.key]
+        } else {
+          customFields[field.key] = values[field.key]
+        }
+      }
+      payload.custom_fields = customFields
+
+      const updated = await updateDoctorToDoctorDocument(accessToken, token, payload)
+      setDocument(updated)
+      loadValuesFromDocument(updated)
+      setEditing(false)
+      Swal.fire({ icon: "success", title: "Saved", timer: 1000, showConfirmButton: false })
+    } catch (error) {
+      Swal.fire({ icon: "error", title: "Couldn't save", text: errMsg(error) })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSignOut = async () => {
+    await logout()
+    navigate(`/signin?redirect=${encodeURIComponent(location.pathname)}`, { replace: true })
+  }
+
+  if (!hydrated || !accessToken) {
+    return <PageLoader fullscreen />
+  }
 
   if (loading) {
     return (
@@ -148,7 +306,7 @@ export default function DoctorToDoctorSharePage() {
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto" />
-            <p className="mt-4 text-sm text-gray-600">Loading shared files...</p>
+            <p className="mt-4 text-sm text-gray-600">Loading shared document...</p>
           </div>
         </div>
       </div>
@@ -165,6 +323,15 @@ export default function DoctorToDoctorSharePage() {
             </div>
             <h1 className="text-lg font-semibold text-gray-900 mb-2">Document Unavailable</h1>
             <p className="text-sm text-gray-600 mb-6">{loadError || "This document could not be found."}</p>
+            {loadErrorStatus === 403 && (
+              <button
+                type="button"
+                onClick={() => void handleSignOut()}
+                className="mb-3 inline-flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50"
+              >
+                <LogOut className="w-4 h-4" /> Sign in with a different account
+              </button>
+            )}
             <Link to="/" className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700">
               <ArrowLeft className="w-4 h-4" />
               Go to Home
@@ -192,6 +359,16 @@ export default function DoctorToDoctorSharePage() {
       (a, b) => (a[1][0]?.order ?? SECTION_ORDER_FALLBACK) - (b[1][0]?.order ?? SECTION_ORDER_FALLBACK)
     )
   })()
+
+  const groupedFields: Record<string, FieldConfig[]> = {}
+  for (const field of document.fields || []) {
+    const section = field.section || "Details"
+    if (!groupedFields[section]) groupedFields[section] = []
+    groupedFields[section].push(field)
+  }
+  const sortedGroupedFields = Object.entries(groupedFields).sort(
+    (a, b) => (a[1][0]?.order ?? SECTION_ORDER_FALLBACK) - (b[1][0]?.order ?? SECTION_ORDER_FALLBACK)
+  )
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -273,6 +450,13 @@ export default function DoctorToDoctorSharePage() {
 
       <div className="screen-only">
       <div className="max-w-3xl mx-auto space-y-6 py-8 px-4">
+        <div className="flex items-center justify-between text-xs text-gray-500">
+          <span>Signed in as {currentUser?.full_name || currentUser?.email}</span>
+          <button type="button" onClick={() => void handleSignOut()} className="inline-flex items-center gap-1.5 font-medium text-gray-600 hover:text-gray-900">
+            <LogOut className="w-3.5 h-3.5" /> Sign out
+          </button>
+        </div>
+
         <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
           <div className="flex items-start gap-4">
             {document.logo_url ? (
@@ -302,6 +486,22 @@ export default function DoctorToDoctorSharePage() {
             <div className="shrink-0 flex items-center gap-2">
               <button
                 type="button"
+                onClick={() => setShowHistory(true)}
+                title="View change history"
+                className="p-2.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50"
+              >
+                <History className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowFormSettings(true)}
+                title="Edit form settings"
+                className="p-2.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
                 onClick={handleDownloadZip}
                 disabled={downloading}
                 title="Download form PDF + attached files (zip)"
@@ -317,6 +517,16 @@ export default function DoctorToDoctorSharePage() {
               >
                 <Printer className="w-4 h-4" />
               </button>
+              {!editing && (
+                <button
+                  type="button"
+                  onClick={handleStartEdit}
+                  title="Edit this form"
+                  className="p-2.5 rounded-xl border border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100"
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -324,47 +534,45 @@ export default function DoctorToDoctorSharePage() {
         <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-start gap-3">
           <Shield className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
           <p className="text-sm text-blue-800">
-            This link is for healthcare professionals only. The form below is read-only.
+            This link is for healthcare professionals only. Every change you make here is recorded with your
+            name so other doctors with this link can see who changed what.
           </p>
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
           <h2 className="text-sm font-semibold text-gray-900">Patient Information</h2>
           <div className="grid gap-4 sm:grid-cols-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Full Name</label>
-              <input type="text" value={document.patient_name || ""} disabled className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-700 outline-none" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
-              <input type="text" value={document.patient_email || ""} disabled className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-700 outline-none" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Phone</label>
-              <input type="text" value={document.patient_phone || ""} disabled className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-700 outline-none" />
-            </div>
+            <PatientInfoField label="Full Name" value={(values.patient_name as string) || ""} editing={editing} onChange={(v) => setValues((p) => ({ ...p, patient_name: v }))} />
+            <PatientInfoField label="Email" type="email" value={(values.patient_email as string) || ""} editing={editing} onChange={(v) => setValues((p) => ({ ...p, patient_email: v }))} />
+            <PatientInfoField label="Phone" type="tel" value={(values.patient_phone as string) || ""} editing={editing} onChange={(v) => setValues((p) => ({ ...p, patient_phone: v }))} />
           </div>
         </div>
 
-        {(() => {
-          const sections: Record<string, FieldConfig[]> = {}
-          for (const field of document.fields || []) {
-            const section = field.section || "Details"
-            if (!sections[section]) sections[section] = []
-            sections[section].push(field)
-          }
-          const sortedSections = Object.entries(sections).sort(
-            (a, b) => (a[1][0]?.order ?? SECTION_ORDER_FALLBACK) - (b[1][0]?.order ?? SECTION_ORDER_FALLBACK)
-          )
-          return sortedSections.map(([section, fields]) => (
-            <div key={section} className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
-              <h2 className="text-sm font-semibold text-gray-900">{section}</h2>
-              {fields.map((field) => (
-                <DisabledField key={field.key} field={field} value={document.values?.[field.key]} />
-              ))}
-            </div>
-          ))
-        })()}
+        {sortedGroupedFields.map(([section, fields]) => (
+          <div key={section} className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
+            <h2 className="text-sm font-semibold text-gray-900">{section}</h2>
+            {fields.map((field) => (
+              <EditableField
+                key={field.key}
+                field={field}
+                value={values[field.key]}
+                editing={editing}
+                onChange={(v) => setValues((p) => ({ ...p, [field.key]: v }))}
+              />
+            ))}
+          </div>
+        ))}
+
+        {editing && (
+          <div className="flex gap-2">
+            <button onClick={handleSave} disabled={saving} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 disabled:opacity-60">
+              {saving ? "Saving..." : "Save Changes"}
+            </button>
+            <button onClick={handleCancelEdit} disabled={saving} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50">
+              Cancel
+            </button>
+          </div>
+        )}
 
         <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
@@ -446,6 +654,58 @@ export default function DoctorToDoctorSharePage() {
           </div>
         </div>
       )}
+
+      {showHistory && (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/50 p-4" onClick={() => setShowHistory(false)}>
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[80dvh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="shrink-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">Change History</h3>
+                <p className="text-xs text-gray-500">Who changed what, and when</p>
+              </div>
+              <button onClick={() => setShowHistory(false)} className="p-2 rounded-lg hover:bg-gray-100">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="overflow-y-auto overscroll-none px-6 py-4 space-y-3">
+              {document.changes.length === 0 ? (
+                <div className="text-center py-8">
+                  <History className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                  <p className="text-sm text-gray-500">No changes recorded yet.</p>
+                </div>
+              ) : (
+                document.changes.map((change) => (
+                  <div key={change.id} className="rounded-xl border border-gray-200 px-3.5 py-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-gray-900">{change.changed_by_name}</span>
+                      <span className="text-[10px] text-gray-400 shrink-0">{formatDateTime(change.created_at)}</span>
+                    </div>
+                    <p className="text-xs text-gray-600 mt-1">
+                      <span className={`inline-block mr-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${change.change_type === "settings" ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700"}`}>
+                        {change.change_type === "settings" ? "Setting" : "Value"}
+                      </span>
+                      {change.field_label}:{" "}
+                      <span className="text-gray-500">{change.old_value ?? "—"}</span>
+                      {" → "}
+                      <span className="text-gray-900 font-medium">{change.new_value ?? "—"}</span>
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <FormSettingsModal
+        isOpen={showFormSettings}
+        onClose={() => setShowFormSettings(false)}
+        documentId={null}
+        shareToken={token}
+        onSaved={refreshDocument}
+      />
     </div>
   )
 }

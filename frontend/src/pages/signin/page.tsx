@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import { Eye, EyeOff, UserRoundCheck } from "lucide-react"
 
 import { AuthPageFrame } from "@/components/auth/auth-page-frame"
@@ -25,8 +25,19 @@ const initialFormState: LoginFormState = {
   rememberMe: true,
 }
 
+// Only ever hand back an internal path (e.g. a doctor-to-doctor share link
+// that redirected here to sign in first) -- never an absolute/external URL,
+// which an attacker could otherwise use this page to bounce a victim through.
+function sanitizeRedirect(target: string | null): string | null {
+  if (!target) return null
+  if (!target.startsWith("/") || target.startsWith("//")) return null
+  return target
+}
+
 export default function Home() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const redirectTarget = sanitizeRedirect(searchParams.get("redirect"))
   const [form, setForm] = useState<LoginFormState>(initialFormState)
   const [errors, setErrors] = useState<Partial<Record<keyof LoginFormState, string>>>(
     {}
@@ -53,9 +64,9 @@ export default function Home() {
       // out on its own, and without this check the two pages would keep
       // bouncing the user between /signin and /dashboard forever.
       if (user && (!user.onboarding_completed || !canUseDashboard(user.role))) return
-      navigate(destinationForRole(user?.role), { replace: true })
+      navigate(redirectTarget || destinationForRole(user?.role), { replace: true })
     }
-  }, [accessToken, hydrated, navigate])
+  }, [accessToken, hydrated, navigate, redirectTarget])
 
   async function handleSubmit() {
     const validation = loginSchema.safeParse(form)
@@ -88,7 +99,7 @@ export default function Home() {
       return
     }
 
-    navigate(destinationForRole(response.user.role))
+    navigate(redirectTarget || destinationForRole(response.user.role))
   }
 
   return (

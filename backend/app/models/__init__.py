@@ -20,7 +20,11 @@ from app.models.onboarding import (
     RefreshTokenSession,
     UserAccount,
 )
-from app.models.patient_document import PatientDocument, PatientDocumentFile
+from app.models.patient_document import (
+    PatientDocument,
+    PatientDocumentChangeLog,
+    PatientDocumentFile,
+)
 from app.models.staff import StaffMember
 
 __all__ = [
@@ -36,6 +40,7 @@ __all__ = [
     "OnboardingStep",
     "PasswordResetTokenSession",
     "PatientDocument",
+    "PatientDocumentChangeLog",
     "PatientDocumentFile",
     "PatientProfile",
     "PlanCode",

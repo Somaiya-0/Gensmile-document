@@ -193,6 +193,17 @@ type PatientDocumentUpdate = Partial<PatientDocumentClinicalFields> & {
   fill_enabled?: boolean
 }
 
+type PatientDocumentChangeLog = {
+  id: string
+  changed_by_name: string
+  change_type: "value" | "settings"
+  field_key: string | null
+  field_label: string
+  old_value: string | null
+  new_value: string | null
+  created_at: string
+}
+
 type PatientDocumentPublicRead = {
   patient_name: string
   patient_email: string | null
@@ -204,6 +215,7 @@ type PatientDocumentPublicRead = {
   fields: FieldConfig[]
   values: Record<string, unknown>
   files: PatientDocumentFileRead[]
+  changes: PatientDocumentChangeLog[]
 }
 
 type PatientFillFormRead = {
@@ -321,6 +333,7 @@ export type {
   AdminDoctor,
   AdminDoctorCreate,
   AdminDocument,
+  PatientDocumentChangeLog,
   PatientDocumentFileRead,
   PatientDocumentRead,
   PatientDocumentCreate,

@@ -14,9 +14,10 @@ from app.services.document_events import emit_event
 from app.models import DoctorPatient, DoctorProfile, PatientProfile, UserAccount, UserRole
 from app.models.staff import StaffMember
 from app.models.base import utc_now
-from app.models.patient_document import PatientDocument, PatientDocumentFile
+from app.models.patient_document import PatientDocument, PatientDocumentChangeLog, PatientDocumentFile
 from app.schemas.patient_document import (
     LogoUploadResponse,
+    PatientDocumentChangeLogRead,
     PatientDocumentCreate,
     PatientDocumentFileRead,
     PatientDocumentPublicRead,
@@ -146,6 +147,119 @@ async def _get_owned_document(
         PatientDocument.doctor_profile_id == profile.id,
     )
     return await db.scalar(stmt)
+
+
+async def _get_shared_document(db: AsyncSession, share_token: str) -> PatientDocument | None:
+    """Resolve a doctor-to-doctor share link's document -- NOT scoped to the
+    caller owning it, since the whole point of this link is that a different
+    doctor opens it. Authorization is instead "any authenticated doctor/staff
+    account" (see _require_doctor), enforced separately by each caller."""
+    stmt = select(PatientDocument).where(
+        PatientDocument.share_token == share_token,
+        PatientDocument.is_shared.is_(True),
+        PatientDocument.is_active.is_(True),
+    )
+    return await db.scalar(stmt)
+
+
+# ─── Change log ─────────────────────────────────────────────────────────────
+
+def _prettify_key(key: str) -> str:
+    return key.replace("_", " ").strip().title()
+
+
+def _stringify_value(value: object) -> str | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    return str(value)
+
+
+async def _field_label_map(db: AsyncSession, doc: PatientDocument) -> dict[str, str]:
+    fields = await _resolve_form_fields(db, doc)
+    labels = {f["key"]: f.get("label") or f["key"] for f in fields}
+    labels.setdefault("patient_name", "Patient Name")
+    labels.setdefault("patient_email", "Email")
+    labels.setdefault("patient_phone", "Phone")
+    labels.setdefault("visit_date", "Visit Date")
+    return labels
+
+
+def _add_change_log(
+    db: AsyncSession,
+    document_id: UUID,
+    actor: UserAccount,
+    change_type: str,
+    field_key: str | None,
+    field_label: str,
+    old_value: object,
+    new_value: object,
+) -> None:
+    old_s, new_s = _stringify_value(old_value), _stringify_value(new_value)
+    if old_s == new_s:
+        return  # No actual change -- e.g. "" -> None -- nothing worth logging.
+    db.add(PatientDocumentChangeLog(
+        document_id=document_id,
+        changed_by_user_id=actor.id,
+        changed_by_name=actor.full_name,
+        change_type=change_type,
+        field_key=field_key,
+        field_label=field_label,
+        old_value=old_s,
+        new_value=new_s,
+    ))
+
+
+async def _get_change_log(db: AsyncSession, document_id: UUID, limit: int = 200) -> list[PatientDocumentChangeLogRead]:
+    stmt = (
+        select(PatientDocumentChangeLog)
+        .where(PatientDocumentChangeLog.document_id == document_id)
+        .order_by(PatientDocumentChangeLog.created_at.desc())
+        .limit(limit)
+    )
+    rows = (await db.scalars(stmt)).all()
+    return [PatientDocumentChangeLogRead.model_validate(r) for r in rows]
+
+
+# Which FieldConfig attributes are worth an audit entry when they change, and
+# the human-readable name for each. `order` is deliberately excluded -- every
+# add/delete/reorder shifts every other field's order number too, which would
+# spam the log with noise that isn't really "information" changing.
+_FIELD_SETTING_ASPECTS: list[tuple[str, str]] = [
+    ("label", "Label"),
+    ("section", "Section"),
+    ("active", "Show on form"),
+    ("patient_editable", "Patient can fill"),
+    ("required", "Required"),
+]
+
+
+def _log_form_config_changes(
+    db: AsyncSession,
+    document_id: UUID,
+    actor: UserAccount,
+    old_fields: list[dict] | None,
+    new_fields: list[dict],
+) -> None:
+    old_by_key = {f["key"]: f for f in (old_fields or [])}
+    new_by_key = {f["key"]: f for f in new_fields}
+
+    for key, new_f in new_by_key.items():
+        label = new_f.get("label") or key
+        old_f = old_by_key.get(key)
+        if old_f is None:
+            _add_change_log(db, document_id, actor, "settings", key, label, None, "Field added")
+            continue
+        for attr, aspect in _FIELD_SETTING_ASPECTS:
+            _add_change_log(
+                db, document_id, actor, "settings", key, f"{label} — {aspect}",
+                old_f.get(attr), new_f.get(attr),
+            )
+
+    for key, old_f in old_by_key.items():
+        if key not in new_by_key:
+            _add_change_log(db, document_id, actor, "settings", key, old_f.get("label") or key, "Field removed", None)
 
 
 async def list_patient_documents(db: AsyncSession, user: UserAccount) -> list[PatientDocumentRead]:
@@ -460,30 +574,44 @@ async def build_patient_fill_document_zip(
 
 
 async def build_patient_document_public_zip(
-    db: AsyncSession, share_token: str
+    db: AsyncSession, share_token: str, user: UserAccount
 ) -> tuple[bytes, str, str] | None:
-    """Public: same package, for another doctor viewing a doctor-to-doctor
-    share link (no auth available on that page either)."""
-    stmt = select(PatientDocument).where(
-        PatientDocument.share_token == share_token,
-        PatientDocument.is_shared.is_(True),
-        PatientDocument.is_active.is_(True),
-    )
-    doc = await db.scalar(stmt)
+    """Doctor-authenticated: another doctor downloading the form PDF + files
+    from a doctor-to-doctor share link. Login is required here too now --
+    this bundle can contain the same PHI as the page itself."""
+    await _require_doctor(db, user)
+    doc = await _get_shared_document(db, share_token)
     if not doc:
         return None
     return await _package_document(db, doc)
 
 
-async def update_patient_document(
-    db: AsyncSession, user: UserAccount, document_id: UUID, payload: PatientDocumentUpdate
-) -> PatientDocumentRead | None:
-    doc = await _get_owned_document(db, user, document_id)
-    if not doc:
-        return None
+async def _apply_document_update(
+    db: AsyncSession, doc: PatientDocument, actor: UserAccount, updates: dict
+) -> bool:
+    """Core mutation shared by the owner-authenticated update
+    (update_patient_document) and the doctor-to-doctor share-link update
+    (update_document_by_share_token): apply each changed field, write an
+    audit-log entry per actual change, and sync the roster copy of
+    patient_phone/name/email when this document is linked to a roster
+    patient. Returns whether the roster was touched (callers use that to
+    decide whether to also emit a patients_updated event)."""
+    field_labels = await _field_label_map(db, doc)
 
-    updates = payload.model_dump(exclude_unset=True)
     for field, value in updates.items():
+        if field == "custom_fields":
+            old_dict = doc.custom_fields or {}
+            new_dict = value or {}
+            for key in set(old_dict) | set(new_dict):
+                _add_change_log(
+                    db, doc.id, actor, "value", key, field_labels.get(key, _prettify_key(key)),
+                    old_dict.get(key), new_dict.get(key),
+                )
+            setattr(doc, field, value)
+            continue
+
+        old_value = getattr(doc, field, None)
+        _add_change_log(db, doc.id, actor, "value", field, field_labels.get(field, _prettify_key(field)), old_value, value)
         setattr(doc, field, value)
 
     # The doc form's phone/name/email fields are separate, denormalized
@@ -526,14 +654,51 @@ async def update_patient_document(
                             patient_user.email = new_email
                             roster_changed = True
 
+    return roster_changed
+
+
+async def _emit_document_update_events(db: AsyncSession, doc: PatientDocument, roster_changed: bool) -> None:
     await emit_event(db, doc.doctor_profile_id, {"type": "document_updated", "document_id": str(doc.id)})
     if roster_changed:
         # The Patient List / Patient Details page reads the roster, not this
         # document -- without this they'd never learn this write touched them.
         await emit_event(db, doc.doctor_profile_id, {"type": "patients_updated"})
+
+
+async def update_patient_document(
+    db: AsyncSession, user: UserAccount, document_id: UUID, payload: PatientDocumentUpdate
+) -> PatientDocumentRead | None:
+    doc = await _get_owned_document(db, user, document_id)
+    if not doc:
+        return None
+
+    updates = payload.model_dump(exclude_unset=True)
+    roster_changed = await _apply_document_update(db, doc, user, updates)
+    await _emit_document_update_events(db, doc, roster_changed)
     await db.commit()
     await db.refresh(doc)
     return _document_read(doc)
+
+
+async def update_document_by_share_token(
+    db: AsyncSession, user: UserAccount, share_token: str, payload: PatientDocumentUpdate
+) -> PatientDocumentPublicRead | None:
+    """Doctor-to-doctor: any authenticated doctor/staff account (not just the
+    document's owner) edits the shared form. Returns the same shape the page
+    already renders (values/fields/changes), never the owner-only
+    PatientDocumentRead -- that would leak this document's share_token/
+    fill_token to whoever else has this link."""
+    await _require_doctor(db, user)
+    doc = await _get_shared_document(db, share_token)
+    if not doc:
+        return None
+
+    updates = payload.model_dump(exclude_unset=True)
+    roster_changed = await _apply_document_update(db, doc, user, updates)
+    await _emit_document_update_events(db, doc, roster_changed)
+    await db.commit()
+    await db.refresh(doc)
+    return await get_patient_document_public_doctor(db, user, share_token)
 
 
 async def delete_patient_document(db: AsyncSession, user: UserAccount, document_id: UUID) -> bool:
@@ -677,15 +842,56 @@ async def get_document_form_config(
         return []
 
 
+async def _apply_form_config_update(
+    db: AsyncSession, doc: PatientDocument, actor: UserAccount, fields: list[dict]
+) -> None:
+    old_fields = doc.form_config if doc.form_config is not None else await _resolve_form_fields(db, doc)
+    _log_form_config_changes(db, doc.id, actor, old_fields, fields)
+    doc.form_config = fields
+
+
 async def update_document_form_config(
     db: AsyncSession, user: UserAccount, document_id: UUID, fields: list[dict]
 ) -> list[dict] | None:
-    """Update form config for a specific document."""
+    """Update form config for a specific document (the document's owner)."""
     doc = await _get_owned_document(db, user, document_id)
     if not doc:
         return None
 
-    doc.form_config = fields
+    await _apply_form_config_update(db, doc, user, fields)
+    await emit_event(db, doc.doctor_profile_id, {"type": "document_updated", "document_id": str(doc.id)})
+    await db.commit()
+    await db.refresh(doc)
+    return doc.form_config
+
+
+async def get_document_form_config_by_share_token(
+    db: AsyncSession, user: UserAccount, share_token: str
+) -> list[dict] | None:
+    """Doctor-to-doctor: form config for the "Edit Form" settings modal,
+    opened by any authenticated doctor/staff account."""
+    await _require_doctor(db, user)
+    doc = await _get_shared_document(db, share_token)
+    if not doc:
+        return None
+    if doc.form_config is not None:
+        return doc.form_config
+    return await _resolve_form_fields(db, doc)
+
+
+async def update_document_form_config_by_share_token(
+    db: AsyncSession, user: UserAccount, share_token: str, fields: list[dict]
+) -> list[dict] | None:
+    """Doctor-to-doctor: any authenticated doctor/staff account changes this
+    document's form settings. Unlike the owner's own edit, this never pushes
+    to the owner's doctor-wide default template -- a visiting doctor has no
+    default template of their own to update."""
+    await _require_doctor(db, user)
+    doc = await _get_shared_document(db, share_token)
+    if not doc:
+        return None
+
+    await _apply_form_config_update(db, doc, user, fields)
     await emit_event(db, doc.doctor_profile_id, {"type": "document_updated", "document_id": str(doc.id)})
     await db.commit()
     await db.refresh(doc)
@@ -693,18 +899,17 @@ async def update_document_form_config(
 
 
 async def get_patient_document_public_doctor(
-    db: AsyncSession, share_token: str
+    db: AsyncSession, user: UserAccount, share_token: str
 ) -> PatientDocumentPublicRead | None:
-    stmt = select(PatientDocument).where(
-        PatientDocument.share_token == share_token,
-        PatientDocument.is_shared.is_(True),
-        PatientDocument.is_active.is_(True),
-    )
-    doc = await db.scalar(stmt)
+    """Doctor-to-doctor: any authenticated doctor/staff account opens the
+    share link and logs in first -- see _require_doctor. No longer anonymous."""
+    await _require_doctor(db, user)
+    doc = await _get_shared_document(db, share_token)
     if not doc:
         return None
 
     editable_fields, values = await _resolve_fields_and_values(db, doc)
+    changes = await _get_change_log(db, doc.id)
 
     return PatientDocumentPublicRead(
         patient_name=doc.patient_name,
@@ -714,6 +919,7 @@ async def get_patient_document_public_doctor(
         logo_url=s3_service.get_presigned_url(doc.logo_key),
         visit_date=doc.visit_date,
         shared_at=doc.updated_at,
+        changes=changes,
         fields=editable_fields,
         values=values,
         files=[_file_read(f) for f in doc.files],
