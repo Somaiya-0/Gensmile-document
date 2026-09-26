@@ -30,6 +30,10 @@ import type { FieldConfig, PatientDocumentFileRead, PatientDocumentPublicRead } 
 
 const SECTION_ORDER_FALLBACK = 999
 
+// Value keys that live at the top level of the document (not in
+// document.fields) -- always shown in the "Patient Information" block.
+const PATIENT_META_KEYS = new Set(["patient_name", "patient_email", "patient_phone", "visit_date"])
+
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : "Something went wrong."
 }
@@ -180,6 +184,14 @@ export default function DoctorToDoctorSharePage() {
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [values, setValues] = useState<Record<string, unknown>>({})
+  // Which value keys THIS doctor has actually typed into during the current
+  // edit session. Save only sends these -- with several doctors possibly
+  // editing the same shared document at once, sending back every field
+  // (including ones this doctor never touched, just loaded at edit-start)
+  // would silently overwrite whatever another doctor saved to those fields
+  // in the meantime. It also lets a live update fill in fields this doctor
+  // hasn't touched without disturbing what they're mid-typing.
+  const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(new Set())
   const [showFormSettings, setShowFormSettings] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
 
@@ -194,6 +206,11 @@ export default function DoctorToDoctorSharePage() {
   const loadValuesFromDocument = useCallback((doc: PatientDocumentPublicRead) => {
     setValues({ ...doc.values, visit_date: doc.visit_date ? doc.visit_date.split("T")[0] : "" })
   }, [])
+
+  const handleValueChange = (key: string, value: unknown) => {
+    setValues((prev) => ({ ...prev, [key]: value }))
+    setDirtyKeys((prev) => (prev.has(key) ? prev : new Set(prev).add(key)))
+  }
 
   useEffect(() => {
     if (!hydrated || !accessToken || !token) return
@@ -219,17 +236,28 @@ export default function DoctorToDoctorSharePage() {
   }, [hydrated, accessToken, token, loadValuesFromDocument])
 
   // Silent counterpart used for the live-update refetch below -- no loading
-  // spinner. Skips while mid-edit so another doctor's save (or this
-  // doctor's own PATCH round-trip) never overwrites what's being typed.
+  // spinner. Always pulls the latest document (fields, files, change
+  // history) so live updates show up even while this doctor is mid-edit --
+  // it just never overwrites a value this doctor has actually typed into
+  // this session (tracked in dirtyKeys), so another doctor's concurrent save
+  // becomes visible without clobbering what's being typed here.
   const refreshDocument = useCallback(() => {
-    if (!accessToken || !token || editing) return
+    if (!accessToken || !token) return
     getDoctorToDoctorDocument(accessToken, token)
       .then((data) => {
         setDocument(data)
-        loadValuesFromDocument(data)
+        const fresh: Record<string, unknown> = { ...data.values, visit_date: data.visit_date ? data.visit_date.split("T")[0] : "" }
+        setValues((prev) => {
+          if (!editing) return fresh
+          const merged = { ...prev }
+          for (const key of Object.keys(fresh)) {
+            if (!dirtyKeys.has(key)) merged[key] = fresh[key]
+          }
+          return merged
+        })
       })
       .catch(() => {})
-  }, [accessToken, token, editing, loadValuesFromDocument])
+  }, [accessToken, token, editing, dirtyKeys])
 
   // Instant: updates the moment any doctor (including this one, from another
   // tab) changes the document, no reload needed.
@@ -251,37 +279,53 @@ export default function DoctorToDoctorSharePage() {
 
   const handleStartEdit = () => {
     if (document) loadValuesFromDocument(document)
+    setDirtyKeys(new Set())
     setEditing(true)
   }
 
   const handleCancelEdit = () => {
     if (document) loadValuesFromDocument(document)
+    setDirtyKeys(new Set())
     setEditing(false)
   }
 
   const handleSave = async () => {
     if (!document || !accessToken || !token) return
+    if (dirtyKeys.size === 0) {
+      // Nothing this doctor actually touched -- just close edit mode rather
+      // than sending an empty no-op PATCH.
+      setEditing(false)
+      return
+    }
     setSaving(true)
     try {
       const customFields: Record<string, unknown> = {}
-      const payload: Record<string, unknown> = {
-        patient_name: values.patient_name,
-        patient_email: values.patient_email || null,
-        patient_phone: values.patient_phone || null,
-        visit_date: values.visit_date || null,
-      }
-      for (const field of document.fields) {
+      const payload: Record<string, unknown> = {}
+      let touchedCustom = false
+
+      for (const key of dirtyKeys) {
+        if (PATIENT_META_KEYS.has(key)) {
+          // patient_name is a required column (empty string is fine, null
+          // is not) -- only email/phone/visit_date fall back to null when
+          // cleared.
+          payload[key] = key === "patient_name" ? values[key] : values[key] || null
+          continue
+        }
+        const field = document.fields.find((f) => f.key === key)
+        if (!field) continue
         if (field.core) {
-          payload[field.key] = values[field.key]
+          payload[key] = values[key]
         } else {
-          customFields[field.key] = values[field.key]
+          customFields[key] = values[key]
+          touchedCustom = true
         }
       }
-      payload.custom_fields = customFields
+      if (touchedCustom) payload.custom_fields = customFields
 
       const updated = await updateDoctorToDoctorDocument(accessToken, token, payload)
       setDocument(updated)
       loadValuesFromDocument(updated)
+      setDirtyKeys(new Set())
       setEditing(false)
       Swal.fire({ icon: "success", title: "Saved", timer: 1000, showConfirmButton: false })
     } catch (error) {
@@ -542,9 +586,9 @@ export default function DoctorToDoctorSharePage() {
         <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
           <h2 className="text-sm font-semibold text-gray-900">Patient Information</h2>
           <div className="grid gap-4 sm:grid-cols-3">
-            <PatientInfoField label="Full Name" value={(values.patient_name as string) || ""} editing={editing} onChange={(v) => setValues((p) => ({ ...p, patient_name: v }))} />
-            <PatientInfoField label="Email" type="email" value={(values.patient_email as string) || ""} editing={editing} onChange={(v) => setValues((p) => ({ ...p, patient_email: v }))} />
-            <PatientInfoField label="Phone" type="tel" value={(values.patient_phone as string) || ""} editing={editing} onChange={(v) => setValues((p) => ({ ...p, patient_phone: v }))} />
+            <PatientInfoField label="Full Name" value={(values.patient_name as string) || ""} editing={editing} onChange={(v) => handleValueChange("patient_name", v)} />
+            <PatientInfoField label="Email" type="email" value={(values.patient_email as string) || ""} editing={editing} onChange={(v) => handleValueChange("patient_email", v)} />
+            <PatientInfoField label="Phone" type="tel" value={(values.patient_phone as string) || ""} editing={editing} onChange={(v) => handleValueChange("patient_phone", v)} />
           </div>
         </div>
 
@@ -557,7 +601,7 @@ export default function DoctorToDoctorSharePage() {
                 field={field}
                 value={values[field.key]}
                 editing={editing}
-                onChange={(v) => setValues((p) => ({ ...p, [field.key]: v }))}
+                onChange={(v) => handleValueChange(field.key, v)}
               />
             ))}
           </div>

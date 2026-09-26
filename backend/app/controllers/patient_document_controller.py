@@ -139,26 +139,41 @@ def _document_read(doc: PatientDocument) -> PatientDocumentRead:
 
 
 async def _get_owned_document(
-    db: AsyncSession, user: UserAccount, document_id: UUID
+    db: AsyncSession, user: UserAccount, document_id: UUID, for_update: bool = False
 ) -> PatientDocument | None:
     profile = await _require_doctor(db, user)
     stmt = select(PatientDocument).where(
         PatientDocument.id == document_id,
         PatientDocument.doctor_profile_id == profile.id,
     )
+    if for_update:
+        stmt = stmt.with_for_update()
     return await db.scalar(stmt)
 
 
-async def _get_shared_document(db: AsyncSession, share_token: str) -> PatientDocument | None:
+async def _get_shared_document(db: AsyncSession, share_token: str, for_update: bool = False) -> PatientDocument | None:
     """Resolve a doctor-to-doctor share link's document -- NOT scoped to the
     caller owning it, since the whole point of this link is that a different
     doctor opens it. Authorization is instead "any authenticated doctor/staff
-    account" (see _require_doctor), enforced separately by each caller."""
+    account" (see _require_doctor), enforced separately by each caller.
+
+    for_update=True locks the row (SELECT ... FOR UPDATE, on Postgres --
+    SQLite has no row locking and silently ignores it, a pre-existing
+    limitation of local dev shared with the rest of this codebase, e.g.
+    document_events' pg_notify) for the duration of the caller's
+    transaction. Pass it whenever the row is about to be read-modify-written
+    (an edit, not a plain GET) -- with several doctors able to PATCH the same
+    shared document at once, without this a second request's read can land
+    between a first request's read and write and silently lose part of the
+    first request's update once both commit.
+    """
     stmt = select(PatientDocument).where(
         PatientDocument.share_token == share_token,
         PatientDocument.is_shared.is_(True),
         PatientDocument.is_active.is_(True),
     )
+    if for_update:
+        stmt = stmt.with_for_update()
     return await db.scalar(stmt)
 
 
@@ -600,14 +615,23 @@ async def _apply_document_update(
 
     for field, value in updates.items():
         if field == "custom_fields":
+            # Merge, never replace: doc.custom_fields holds every custom
+            # field's value in one JSON blob, and the client only sends the
+            # keys it actually touched (see the frontend's dirty-field
+            # tracking). A concurrent editor's PATCH is a separate DB
+            # transaction that already committed by the time this one reads
+            # doc -- replacing the whole dict here would silently wipe out
+            # whatever key(s) that other request just wrote. Ten doctors on
+            # the same shared document editing different fields at once must
+            # not be able to stomp on each other this way.
             old_dict = doc.custom_fields or {}
-            new_dict = value or {}
-            for key in set(old_dict) | set(new_dict):
+            incoming = value or {}
+            for key, new_val in incoming.items():
                 _add_change_log(
                     db, doc.id, actor, "value", key, field_labels.get(key, _prettify_key(key)),
-                    old_dict.get(key), new_dict.get(key),
+                    old_dict.get(key), new_val,
                 )
-            setattr(doc, field, value)
+            setattr(doc, field, {**old_dict, **incoming})
             continue
 
         old_value = getattr(doc, field, None)
@@ -668,7 +692,12 @@ async def _emit_document_update_events(db: AsyncSession, doc: PatientDocument, r
 async def update_patient_document(
     db: AsyncSession, user: UserAccount, document_id: UUID, payload: PatientDocumentUpdate
 ) -> PatientDocumentRead | None:
-    doc = await _get_owned_document(db, user, document_id)
+    # Locked: this document may also be getting PATCHed right now through a
+    # doctor-to-doctor share link (a different doctor, a separate DB
+    # transaction) -- without the lock, both transactions could read
+    # custom_fields before either commits, and whichever commits last would
+    # silently overwrite the other's merge.
+    doc = await _get_owned_document(db, user, document_id, for_update=True)
     if not doc:
         return None
 
@@ -689,7 +718,9 @@ async def update_document_by_share_token(
     PatientDocumentRead -- that would leak this document's share_token/
     fill_token to whoever else has this link."""
     await _require_doctor(db, user)
-    doc = await _get_shared_document(db, share_token)
+    # Locked: ten doctors could be PATCHing this same shared document right
+    # now, each in their own transaction -- see update_patient_document.
+    doc = await _get_shared_document(db, share_token, for_update=True)
     if not doc:
         return None
 
@@ -854,7 +885,7 @@ async def update_document_form_config(
     db: AsyncSession, user: UserAccount, document_id: UUID, fields: list[dict]
 ) -> list[dict] | None:
     """Update form config for a specific document (the document's owner)."""
-    doc = await _get_owned_document(db, user, document_id)
+    doc = await _get_owned_document(db, user, document_id, for_update=True)
     if not doc:
         return None
 
@@ -887,7 +918,7 @@ async def update_document_form_config_by_share_token(
     to the owner's doctor-wide default template -- a visiting doctor has no
     default template of their own to update."""
     await _require_doctor(db, user)
-    doc = await _get_shared_document(db, share_token)
+    doc = await _get_shared_document(db, share_token, for_update=True)
     if not doc:
         return None
 

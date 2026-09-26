@@ -318,15 +318,19 @@ export function FormSettingsModal({
   const [expandedSection, setExpandedSection] = useState<string | null>(null)
   const [showAddField, setShowAddField] = useState(false)
 
+  const fetchFields = useCallback(async () => {
+    const data = shareToken
+      ? await getDoctorToDoctorFormConfig(token, shareToken)
+      : isDefault
+        ? await getFormConfig(token)
+        : await getDocumentFormConfig(token, documentId as string)
+    return [...data.fields].sort((a, b) => a.order - b.order)
+  }, [documentId, isDefault, shareToken, token])
+
   const loadFields = useCallback(async () => {
     setLoading(true)
     try {
-      const data = shareToken
-        ? await getDoctorToDoctorFormConfig(token, shareToken)
-        : isDefault
-          ? await getFormConfig(token)
-          : await getDocumentFormConfig(token, documentId as string)
-      const sorted = [...data.fields].sort((a, b) => a.order - b.order)
+      const sorted = await fetchFields()
       setFields(sorted)
       if (sorted.length > 0) setExpandedSection(sorted[0].section || "Overview")
     } catch (error) {
@@ -334,21 +338,31 @@ export function FormSettingsModal({
     } finally {
       setLoading(false)
     }
-  }, [documentId, isDefault, shareToken, token])
+  }, [fetchFields])
 
   useEffect(() => {
     if (isOpen) loadFields()
   }, [isOpen, loadFields])
 
   // Every mutation below saves immediately -- there's no separate "Save
-  // Changes" step. Silent on success (matching normal autosave UX); only
-  // failures interrupt with a dialog, and on failure the local edit is
+  // Changes" step, and each one re-fetches the current field list right
+  // before applying itself rather than mutating the copy this modal loaded
+  // when it first opened. With several doctors able to have this modal open
+  // on the same shared document at once, mutating (and then replacing the
+  // whole array from) a snapshot that's been sitting in memory since open
+  // would silently discard whatever another doctor already saved in the
+  // meantime -- fetching fresh right before each write shrinks that race
+  // window to just this one request instead of "however long the modal's
+  // been open". Silent on success (matching normal autosave UX); only
+  // failures interrupt with a dialog, and on failure the local view is
   // rolled back to what the server actually has so the UI never claims a
   // change stuck that didn't.
-  const persist = async (nextFields: FieldConfig[]) => {
+  const applyAndPersist = async (mutate: (current: FieldConfig[]) => FieldConfig[]) => {
     setSaving(true)
     try {
-      const ordered = nextFields.map((f, i) => ({ ...f, order: i + 1 }))
+      const fresh = await fetchFields()
+      const ordered = mutate(fresh).map((f, i) => ({ ...f, order: i + 1 }))
+      setFields(ordered)
       if (shareToken) {
         await updateDoctorToDoctorFormConfig(token, shareToken, { fields: ordered })
       } else if (isDefault) {
@@ -369,19 +383,14 @@ export function FormSettingsModal({
   }
 
   // Used for checkboxes -- a discrete toggle, fine to save right away.
-  // Computed from the `fields` closure and applied directly (not via a
-  // setFields(prev => ...) updater) so persist() runs exactly once per
-  // call -- an updater function can run twice under StrictMode, which
-  // would fire the save request twice too.
   const updateField = (key: string, patch: Partial<FieldConfig>) => {
-    const next = fields.map((f) => (f.key === key ? { ...f, ...patch } : f))
-    setFields(next)
-    void persist(next)
+    void applyAndPersist((current) => current.map((f) => (f.key === key ? { ...f, ...patch } : f)))
   }
 
   // Used for the label text input -- saving on every keystroke would fire a
   // request per character, so this only updates local state; the input's
-  // onBlur below is what actually persists it.
+  // onBlur below is what actually persists it (via updateField, reading the
+  // latest-typed label out of local `fields`).
   const updateFieldLocal = (key: string, patch: Partial<FieldConfig>) => {
     setFields((prev) => prev.map((f) => (f.key === key ? { ...f, ...patch } : f)))
   }
@@ -396,32 +405,33 @@ export function FormSettingsModal({
       confirmButtonColor: "#dc2626",
     })
     if (!confirmed.isConfirmed) return
-    const next = fields.filter((f) => f.key !== field.key)
-    setFields(next)
-    void persist(next)
+    void applyAndPersist((current) => current.filter((f) => f.key !== field.key))
   }
 
   const addField = (draft: NewFieldDraft) => {
     const slug = draft.label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40)
     const key = `custom_${slug || "field"}_${Date.now().toString(36)}`
-    const next = [...fields, {
+    void applyAndPersist((current) => [...current, {
       key, label: draft.label, type: draft.type, section: draft.section,
-      order: (fields[fields.length - 1]?.order || 0) + 1, active: true, required: false,
+      order: (current[current.length - 1]?.order || 0) + 1, active: true, required: false,
       patient_editable: false, core: false,
-    }]
-    setFields(next)
-    void persist(next)
+    }])
     setShowAddField(false)
   }
 
-  const moveField = (index: number, direction: number) => {
-    const target = index + direction
-    if (target < 0 || target >= fields.length) return
-    const next = [...fields]
-    ;[next[index], next[target]] = [next[target], next[index]]
-    const reordered = next.map((f, i) => ({ ...f, order: i + 1 }))
-    setFields(reordered)
-    void persist(reordered)
+  // Identifies the field by key rather than by its position in the possibly
+  //-stale local list -- moved by key against whatever the fresh fetch
+  // returns, so a concurrent add/delete by someone else doesn't shift the
+  // meaning of "index N" out from under this move.
+  const moveField = (key: string, direction: number) => {
+    void applyAndPersist((current) => {
+      const index = current.findIndex((f) => f.key === key)
+      const target = index + direction
+      if (index === -1 || target < 0 || target >= current.length) return current
+      const next = [...current]
+      ;[next[index], next[target]] = [next[target], next[index]]
+      return next
+    })
   }
 
   if (!isOpen) return null
@@ -478,10 +488,10 @@ export function FormSettingsModal({
                             <div key={field.key} className={`px-4 py-3 ${!field.active ? "opacity-40 bg-gray-50" : ""}`}>
                               <div className="flex items-center gap-3">
                                 <div className="flex flex-col gap-0.5 shrink-0">
-                                  <button onClick={() => moveField(globalIndex, -1)} disabled={globalIndex === 0} className="text-gray-300 hover:text-gray-500 disabled:opacity-30"><ChevronDown className="w-3.5 h-3.5 rotate-180" /></button>
-                                  <button onClick={() => moveField(globalIndex, 1)} disabled={globalIndex === fields.length - 1} className="text-gray-300 hover:text-gray-500 disabled:opacity-30"><ChevronDown className="w-3.5 h-3.5" /></button>
+                                  <button onClick={() => moveField(field.key, -1)} disabled={globalIndex === 0} className="text-gray-300 hover:text-gray-500 disabled:opacity-30"><ChevronDown className="w-3.5 h-3.5 rotate-180" /></button>
+                                  <button onClick={() => moveField(field.key, 1)} disabled={globalIndex === fields.length - 1} className="text-gray-300 hover:text-gray-500 disabled:opacity-30"><ChevronDown className="w-3.5 h-3.5" /></button>
                                 </div>
-                                <input type="text" value={field.label} onChange={(e) => updateFieldLocal(field.key, { label: e.target.value })} onBlur={() => persist(fields)} className="flex-1 px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:border-blue-500 outline-none" />
+                                <input type="text" value={field.label} onChange={(e) => updateFieldLocal(field.key, { label: e.target.value })} onBlur={() => updateField(field.key, { label: field.label })} className="flex-1 px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:border-blue-500 outline-none" />
                                 <span className="text-[10px] font-medium px-2 py-1 rounded-full bg-gray-100 text-gray-600 shrink-0">
                                   {field.type === "text" ? "Text" : field.type === "textarea" ? "Notes" : field.type === "checkbox" ? "Yes/No" : field.type === "date" ? "Date" : field.type}
                                 </span>
@@ -557,6 +567,12 @@ function DocumentDetailModal({
   const [editing, setEditing] = useState(startInEditMode)
   const [formData, setFormData] = useState<ClinicalFormData>({})
   const [customFields, setCustomFields] = useState<Record<string, unknown>>({})
+  // Which field keys were actually edited this session (core -> formData,
+  // custom -> customFields). Save sends only these -- this document may also
+  // be open on a doctor-to-doctor share link right now, being edited by a
+  // different doctor; sending the whole formData/customFields snapshot back
+  // would silently overwrite whatever field(s) they just saved.
+  const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [sharing, setSharing] = useState<"patient" | "doctor" | null>(null)
@@ -610,10 +626,28 @@ function DocumentDetailModal({
   }, [document, editing])
 
   const handleSave = async () => {
+    if (dirtyKeys.size === 0) {
+      setEditing(false)
+      return
+    }
     setSaving(true)
     try {
-      const updated = await updatePatientDocument(token, document.id, { ...formData, custom_fields: customFields })
+      const payload: Record<string, unknown> = {}
+      const dirtyCustomFields: Record<string, unknown> = {}
+      let touchedCustom = false
+      for (const key of dirtyKeys) {
+        if (key in formData) {
+          payload[key] = (formData as Record<string, unknown>)[key]
+        } else {
+          dirtyCustomFields[key] = customFields[key]
+          touchedCustom = true
+        }
+      }
+      if (touchedCustom) payload.custom_fields = dirtyCustomFields
+
+      const updated = await updatePatientDocument(token, document.id, payload)
       onUpdate(updated)
+      setDirtyKeys(new Set())
       setEditing(false)
       Swal.fire({ icon: "success", title: "Saved", timer: 1000, showConfirmButton: false })
     } catch (error) {
@@ -688,6 +722,8 @@ function DocumentDetailModal({
     }
   }
 
+  const markDirty = (key: string) => setDirtyKeys((prev) => (prev.has(key) ? prev : new Set(prev).add(key)))
+
   const handlePrint = () => window.open(`/documents/print/${document.id}`, "_blank")
 
   const fieldConfigs = document.form_config || []
@@ -715,7 +751,7 @@ function DocumentDetailModal({
         <input
           type={type}
           value={value}
-          onChange={(e) => setFormData((p) => ({ ...p, [key]: e.target.value }))}
+          onChange={(e) => { setFormData((p) => ({ ...p, [key]: e.target.value })); markDirty(key) }}
           className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-blue-500 outline-none"
         />
       </FieldShell>
@@ -728,6 +764,7 @@ function DocumentDetailModal({
     const setValue = (v: unknown) => {
       if (isCore) setFormData((p) => ({ ...p, [field.key]: v }))
       else setCustomFields((p) => ({ ...p, [field.key]: v }))
+      markDirty(field.key)
     }
 
     if (!editing) {
@@ -790,7 +827,7 @@ function DocumentDetailModal({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="z-[80] min-w-[200px] rounded-xl border-gray-200 p-1.5">
                 {!editing && (
-                  <DropdownMenuItem onClick={() => setEditing(true)} className="cursor-pointer gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-900">
+                  <DropdownMenuItem onClick={() => { setDirtyKeys(new Set()); setEditing(true) }} className="cursor-pointer gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-900">
                     <Pencil className="w-4 h-4 text-blue-600" /> Edit
                   </DropdownMenuItem>
                 )}
@@ -890,7 +927,7 @@ function DocumentDetailModal({
               )}
               <div className="flex gap-2">
                 <button onClick={handleSave} disabled={saving || uploading} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed">{saving ? "Saving..." : "Save Changes"}</button>
-                <button onClick={() => setEditing(false)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
+                <button onClick={() => { setDirtyKeys(new Set()); setEditing(false) }} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
               </div>
             </div>
           ) : (
