@@ -204,20 +204,21 @@ async def _field_label_map(db: AsyncSession, doc: PatientDocument) -> dict[str, 
 def _add_change_log(
     db: AsyncSession,
     document_id: UUID,
-    actor: UserAccount,
-    change_type: str,
+    actor: UserAccount | None,
+    change_type: str,  # "value" | "settings" | "file" | "sharing" | "document"
     field_key: str | None,
     field_label: str,
     old_value: object,
     new_value: object,
 ) -> None:
+    """actor=None means the patient themselves, via the no-auth self-fill link."""
     old_s, new_s = _stringify_value(old_value), _stringify_value(new_value)
     if old_s == new_s:
         return  # No actual change -- e.g. "" -> None -- nothing worth logging.
     db.add(PatientDocumentChangeLog(
         document_id=document_id,
-        changed_by_user_id=actor.id,
-        changed_by_name=actor.full_name,
+        changed_by_user_id=actor.id if actor else None,
+        changed_by_name=actor.full_name if actor else "Patient (self-fill link)",
         change_type=change_type,
         field_key=field_key,
         field_label=field_label,
@@ -372,6 +373,7 @@ async def create_patient_document(
     )
     db.add(doc)
     await db.flush()  # populate doc.id (client-side default) before it's used below
+    _add_change_log(db, doc.id, user, "document", None, "Document", None, "Created")
     await emit_event(db, profile.id, {"type": "document_updated", "document_id": str(doc.id)})
     await db.commit()
     await db.refresh(doc)
@@ -383,6 +385,13 @@ async def get_patient_document(
 ) -> PatientDocumentRead | None:
     doc = await _get_owned_document(db, user, document_id)
     return _document_read(doc) if doc else None
+
+
+async def get_patient_document_changes(
+    db: AsyncSession, user: UserAccount, document_id: UUID
+) -> list[PatientDocumentChangeLogRead] | None:
+    doc = await _get_owned_document(db, user, document_id)
+    return await _get_change_log(db, doc.id) if doc else None
 
 
 def _pdf_field_value(doc: PatientDocument, field: dict) -> str:
@@ -762,6 +771,7 @@ async def upload_document_logo(
 
     old_key = doc.logo_key
     doc.logo_key = key
+    _add_change_log(db, doc.id, user, "document", None, "Logo", "Replaced" if old_key else None, file.filename or "Uploaded")
     await emit_event(db, doc.doctor_profile_id, {"type": "document_updated", "document_id": str(doc.id)})
     await db.commit()
 
@@ -793,6 +803,7 @@ async def upload_document_file(
         uploaded_by_patient=False,
     )
     db.add(doc_file)
+    _add_change_log(db, doc.id, user, "file", None, "Attachment", None, f"Uploaded {doc_file.file_name}")
     await emit_event(db, doc.doctor_profile_id, {"type": "document_updated", "document_id": str(doc.id)})
     await db.commit()
     await db.refresh(doc_file)
@@ -815,6 +826,7 @@ async def delete_document_file(db: AsyncSession, user: UserAccount, file_id: UUI
 
     await s3_service.delete_file_from_s3(doc_file.file_key)
     document_id = doc_file.document_id
+    _add_change_log(db, document_id, user, "file", None, "Attachment", doc_file.file_name, "Removed")
     await db.delete(doc_file)
     await emit_event(db, profile.id, {"type": "document_updated", "document_id": str(document_id)})
     await db.commit()
@@ -828,6 +840,9 @@ async def toggle_document_sharing(
     if not doc:
         return None
 
+    _add_change_log(db, doc.id, user, "sharing", None, "Doctor-to-doctor link", doc.is_shared, is_shared)
+    if is_shared and doc.is_shared:
+        _add_change_log(db, doc.id, user, "sharing", None, "Doctor-to-doctor link", None, "New link generated")
     doc.is_shared = is_shared
     if is_shared:
         doc.share_token = _new_token()
@@ -845,6 +860,7 @@ async def toggle_fill_enabled(
     if not doc:
         return None
 
+    _add_change_log(db, doc.id, user, "sharing", None, "Patient self-fill link", doc.fill_enabled, fill_enabled)
     doc.fill_enabled = fill_enabled
     await emit_event(db, doc.doctor_profile_id, {"type": "document_updated", "document_id": str(doc.id)})
     await db.commit()
@@ -1077,6 +1093,7 @@ async def upload_patient_fill_file(
         uploaded_by_patient=True,
     )
     db.add(doc_file)
+    _add_change_log(db, doc.id, None, "file", None, "Attachment", None, f"Uploaded {doc_file.file_name}")
     await emit_event(db, doc.doctor_profile_id, {"type": "document_updated", "document_id": str(doc.id)})
     await db.commit()
     await db.refresh(doc_file)
@@ -1100,6 +1117,7 @@ async def delete_patient_fill_file(db: AsyncSession, fill_token: str, file_id: U
         return False
 
     await s3_service.delete_file_from_s3(doc_file.file_key)
+    _add_change_log(db, doc.id, None, "file", None, "Attachment", doc_file.file_name, "Removed")
     await db.delete(doc_file)
     await emit_event(db, doc.doctor_profile_id, {"type": "document_updated", "document_id": str(doc.id)})
     await db.commit()
@@ -1134,18 +1152,20 @@ async def submit_patient_fill_document(
         field = editable_by_key.get(key)
         if not field:
             continue
+        label = field.get("label") or _prettify_key(key)
         if field.get("core"):
+            _add_change_log(db, doc.id, None, "value", key, label, getattr(doc, key, None), value)
             setattr(doc, key, value)
         else:
+            _add_change_log(db, doc.id, None, "value", key, label, custom_fields.get(key), value)
             custom_fields[key] = value
     doc.custom_fields = custom_fields
 
-    if payload.patient_name:
-        doc.patient_name = payload.patient_name
-    if payload.patient_email:
-        doc.patient_email = payload.patient_email
-    if payload.patient_phone:
-        doc.patient_phone = payload.patient_phone
+    for attr, label in (("patient_name", "Patient Name"), ("patient_email", "Email"), ("patient_phone", "Phone")):
+        new_val = getattr(payload, attr)
+        if new_val:
+            _add_change_log(db, doc.id, None, "value", attr, label, getattr(doc, attr), new_val)
+            setattr(doc, attr, new_val)
 
     doc.patient_submitted_at = utc_now()
 

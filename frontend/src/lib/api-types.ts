@@ -196,7 +196,7 @@ type PatientDocumentUpdate = Partial<PatientDocumentClinicalFields> & {
 type PatientDocumentChangeLog = {
   id: string
   changed_by_name: string
-  change_type: "value" | "settings"
+  change_type: "value" | "settings" | "file" | "sharing" | "document"
   field_key: string | null
   field_label: string
   old_value: string | null

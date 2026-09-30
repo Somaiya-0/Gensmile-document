@@ -19,6 +19,7 @@ from app.controllers.patient_document_controller import (
     get_document_form_config,
     get_document_form_config_by_share_token,
     get_patient_document,
+    get_patient_document_changes,
     get_patient_document_public_doctor,
     get_patient_fill_document,
     list_patient_documents,
@@ -42,6 +43,7 @@ from app.models import UserAccount
 from app.schemas.patient_document import (
     DocumentFormConfigUpdate,
     LogoUploadResponse,
+    PatientDocumentChangeLogRead,
     PatientDocumentCreate,
     PatientDocumentFileRead,
     PatientDocumentPublicRead,
@@ -155,6 +157,18 @@ async def get_my_patient_document(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
     return document
+
+
+@router.get("/patient-documents/{document_id}/changes", response_model=list[PatientDocumentChangeLogRead], status_code=status.HTTP_200_OK, responses={**_AUTH, **_404})
+async def get_my_patient_document_changes(
+    document_id: UUID,
+    current_user: Annotated[UserAccount, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> list[PatientDocumentChangeLogRead]:
+    changes = await get_patient_document_changes(db=db, user=current_user, document_id=document_id)
+    if changes is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return changes
 
 
 @router.patch("/patient-documents/{document_id}", response_model=PatientDocumentRead, status_code=status.HTTP_200_OK, responses={**_AUTH, **_404})

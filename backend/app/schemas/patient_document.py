@@ -136,7 +136,7 @@ class PatientDocumentChangeLogRead(BaseModel):
 
     id: UUID
     changed_by_name: str
-    change_type: str  # "value" | "settings"
+    change_type: str  # "value" | "settings" | "file" | "sharing" | "document"
     field_key: str | None = None
     field_label: str
     old_value: str | None = None

@@ -5,7 +5,7 @@ import {
   Plus, Search, Save, Share2, Upload, FileText, Image as ImageIcon, X,
   Loader2, Check, Printer, Pencil, Trash2,
   Settings, ChevronRight, FileArchive, FileSpreadsheet, ChevronDown,
-  Download, GripVertical, Users, Stethoscope, MoreVertical, LogOut,
+  Download, GripVertical, Users, Stethoscope, MoreVertical, LogOut, History,
 } from "lucide-react"
 
 import {
@@ -14,7 +14,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import {
-  listPatientDocuments, createPatientDocument, getPatientDocument,
+  listPatientDocuments, createPatientDocument, getPatientDocument, getPatientDocumentChanges,
   updatePatientDocument, deletePatientDocument, uploadPatientDocumentLogo,
   uploadPatientDocumentAttachment, deletePatientDocumentFile, toggleDocumentSharing,
   toggleFillLink, getDocumentFormConfig, updateDocumentFormConfig,
@@ -23,12 +23,13 @@ import {
   getDoctorToDoctorFormConfig, updateDoctorToDoctorFormConfig,
 } from "@/lib/api-client"
 import type {
-  DoctorPatient, FieldConfig, PatientDocumentCreate, PatientDocumentFileRead, PatientDocumentRead,
+  DoctorPatient, FieldConfig, PatientDocumentChangeLog, PatientDocumentCreate, PatientDocumentFileRead, PatientDocumentRead,
 } from "@/lib/api-types"
 import { useAuthStore } from "@/stores/auth-store"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { useDocumentsLiveUpdates } from "@/hooks/use-documents-live-updates"
 import { saveBlobAsFile } from "@/lib/utils"
+import { ChangeHistoryModal } from "@/components/dashboard/change-history-modal"
 
 // "select" (Dropdown) is intentionally left out -- no longer offered as a
 // type for new fields. FIELD_TYPE_LABELS below still needs a "select" entry
@@ -578,6 +579,8 @@ function DocumentDetailModal({
   const [sharing, setSharing] = useState<"patient" | "doctor" | null>(null)
   const [shareCopied, setShareCopied] = useState<"patient" | "doctor" | null>(null)
   const [showFormSettings, setShowFormSettings] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [history, setHistory] = useState<PatientDocumentChangeLog[] | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const logoInputRef = useRef<HTMLInputElement>(null)
   const loadedDocIdRef = useRef<string | null>(null)
@@ -840,6 +843,19 @@ function DocumentDetailModal({
                 <DropdownMenuItem onClick={() => setShowFormSettings(true)} className="cursor-pointer gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-900">
                   <Settings className="w-4 h-4 text-blue-600" /> Edit Form
                 </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setHistory(null)
+                    setShowHistory(true)
+                    getPatientDocumentChanges(token, document.id).then(setHistory).catch((error) => {
+                      setShowHistory(false)
+                      Swal.fire({ icon: "error", title: "Couldn't load history", text: errMsg(error) })
+                    })
+                  }}
+                  className="cursor-pointer gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-900"
+                >
+                  <History className="w-4 h-4 text-blue-600" /> Change History
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={handlePrint} className="cursor-pointer gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-900">
                   <Printer className="w-4 h-4 text-blue-600" /> Print
                 </DropdownMenuItem>
@@ -935,6 +951,8 @@ function DocumentDetailModal({
           )}
         </div>
       </div>
+
+      {showHistory && <ChangeHistoryModal changes={history} onClose={() => setShowHistory(false)} />}
 
       <FormSettingsModal
         isOpen={showFormSettings}

@@ -22,6 +22,7 @@ import {
   downloadDoctorToDoctorZip, getDoctorToDoctorDocument, updateDoctorToDoctorDocument,
 } from "@/lib/api-client"
 import { FormSettingsModal } from "@/components/dashboard/patient-document-pages"
+import { ChangeHistoryModal } from "@/components/dashboard/change-history-modal"
 import { usePublicDocumentLiveUpdates } from "@/hooks/use-public-document-live-updates"
 import { saveBlobAsFile } from "@/lib/utils"
 import { useAuthStore } from "@/stores/auth-store"
@@ -50,12 +51,6 @@ function formatDate(dateString: string | null | undefined) {
   if (!dateString) return "N/A"
   const date = new Date(dateString)
   return date.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })
-}
-
-function formatDateTime(dateString: string) {
-  return new Date(dateString).toLocaleString("en-US", {
-    year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
-  })
 }
 
 function isImageFile(file: PatientDocumentFileRead) {
@@ -699,49 +694,7 @@ export default function DoctorToDoctorSharePage() {
         </div>
       )}
 
-      {showHistory && (
-        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/50 p-4" onClick={() => setShowHistory(false)}>
-          <div className="relative bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[80dvh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="shrink-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-semibold text-gray-900">Change History</h3>
-                <p className="text-xs text-gray-500">Who changed what, and when</p>
-              </div>
-              <button onClick={() => setShowHistory(false)} className="p-2 rounded-lg hover:bg-gray-100">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <div className="overflow-y-auto overscroll-none px-6 py-4 space-y-3">
-              {document.changes.length === 0 ? (
-                <div className="text-center py-8">
-                  <History className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-                  <p className="text-sm text-gray-500">No changes recorded yet.</p>
-                </div>
-              ) : (
-                document.changes.map((change) => (
-                  <div key={change.id} className="rounded-xl border border-gray-200 px-3.5 py-2.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold text-gray-900">{change.changed_by_name}</span>
-                      <span className="text-[10px] text-gray-400 shrink-0">{formatDateTime(change.created_at)}</span>
-                    </div>
-                    <p className="text-xs text-gray-600 mt-1">
-                      <span className={`inline-block mr-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${change.change_type === "settings" ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700"}`}>
-                        {change.change_type === "settings" ? "Setting" : "Value"}
-                      </span>
-                      {change.field_label}:{" "}
-                      <span className="text-gray-500">{change.old_value ?? "—"}</span>
-                      {" → "}
-                      <span className="text-gray-900 font-medium">{change.new_value ?? "—"}</span>
-                    </p>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {showHistory && <ChangeHistoryModal changes={document.changes} onClose={() => setShowHistory(false)} />}
 
       <FormSettingsModal
         isOpen={showFormSettings}

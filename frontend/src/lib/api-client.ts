@@ -9,6 +9,7 @@ import type {
   DocumentFormConfigUpdate,
   LogoUploadResponse,
   PatientDocumentFileRead,
+  PatientDocumentChangeLog,
   PatientDocumentRead,
   PatientDocumentCreate,
   PatientDocumentUpdate,
@@ -111,6 +112,10 @@ export async function createPatientDocument(
 
 export async function getPatientDocument(token: string, documentId: string): Promise<PatientDocumentRead> {
   return apiRequest<PatientDocumentRead>(`/patient-documents/${documentId}`, { headers: authHeaders(token) })
+}
+
+export async function getPatientDocumentChanges(token: string, documentId: string): Promise<PatientDocumentChangeLog[]> {
+  return apiRequest<PatientDocumentChangeLog[]>(`/patient-documents/${documentId}/changes`, { headers: authHeaders(token) })
 }
 
 export async function updatePatientDocument(
