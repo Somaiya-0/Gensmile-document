@@ -167,7 +167,6 @@ export default function DoctorToDoctorSharePage() {
 
   const hydrated = useAuthStore((s) => s.hydrated)
   const accessToken = useAuthStore((s) => s.accessToken)
-  const currentUser = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)
 
   const [document, setDocument] = useState<PatientDocumentPublicRead | null>(null)
@@ -341,7 +340,7 @@ export default function DoctorToDoctorSharePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col">
+      <div className="flex flex-col py-16">
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto" />
@@ -354,7 +353,7 @@ export default function DoctorToDoctorSharePage() {
 
   if (loadError || !document) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col">
+      <div className="flex flex-col py-16">
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-gray-200 p-8 max-w-md w-full text-center">
             <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -410,7 +409,7 @@ export default function DoctorToDoctorSharePage() {
   )
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div>
       <style>{`
         .print-sheet { display: none; }
         @media print {
@@ -488,14 +487,7 @@ export default function DoctorToDoctorSharePage() {
       </div>
 
       <div className="screen-only">
-      <div className="max-w-3xl mx-auto space-y-6 py-8 px-4">
-        <div className="flex items-center justify-between text-xs text-gray-500">
-          <span>Signed in as {currentUser?.full_name || currentUser?.email}</span>
-          <button type="button" onClick={() => void handleSignOut()} className="inline-flex items-center gap-1.5 font-medium text-gray-600 hover:text-gray-900">
-            <LogOut className="w-3.5 h-3.5" /> Sign out
-          </button>
-        </div>
-
+      <div className="max-w-3xl mx-auto space-y-6">
         <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
           <div className="flex items-start gap-4">
             {document.logo_url ? (

@@ -65,7 +65,10 @@ export default function App() {
         {/* ===== PUBLIC DOCUMENT LINKS (the token in the URL is the key) =====
             These paths must match what the backend puts in fill_url/share_url. */}
         <Route path="/patient-document/:fillToken" element={<PageBoundary Component={PagePatientDocumentFillToken} />} />
-        <Route path="/doctor-to-doctor/documents/:token" element={<PageBoundary Component={PageDoctorToDoctorDocumentsToken} />} />
+        {/* Signed-in doctors see the share link inside the normal dashboard shell (sidebar + top bar). */}
+        <Route element={<DashboardLayout />}>
+          <Route path="/doctor-to-doctor/documents/:token" element={<PageBoundary Component={PageDoctorToDoctorDocumentsToken} />} />
+        </Route>
 
         {/* Print view -- signed-in, but outside any layout so it renders
             without the top bar/sidebar. */}

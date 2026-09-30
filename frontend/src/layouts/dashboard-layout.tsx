@@ -107,7 +107,7 @@ function Sidebar() {
   const items = useNavItems()
 
   return (
-    <aside className="hidden w-60 shrink-0 border-r border-[#e6ecf4] bg-white sm:block">
+    <aside className="hidden w-60 shrink-0 border-r border-[#e6ecf4] bg-white sm:block print:hidden">
       <div className="px-4 py-5">
         <p className="px-2 text-lg font-semibold text-[#0f172a]">Documents</p>
       </div>
@@ -144,6 +144,9 @@ export default function DashboardLayout() {
   const hydrated = useAuthStore((state) => state.hydrated)
   const user = useAuthStore((state) => state.user)
   const navigate = useNavigate()
+  const { pathname } = useLocation()
+  // Come back to this exact page after signing in (e.g. a doctor-to-doctor share link).
+  const signinUrl = `/signin?redirect=${encodeURIComponent(pathname)}`
   const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -152,13 +155,13 @@ export default function DashboardLayout() {
       // Short grace period: a token refresh in another tab can briefly leave
       // this one without a token before the new one lands.
       redirectTimerRef.current = setTimeout(() => {
-        if (!useAuthStore.getState().accessToken) navigate("/signin", { replace: true })
+        if (!useAuthStore.getState().accessToken) navigate(signinUrl, { replace: true })
       }, 800)
       return () => {
         if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current)
       }
     }
-  }, [hydrated, token, navigate])
+  }, [hydrated, token, navigate, signinUrl])
 
   useEffect(() => {
     if (!hydrated || !token || !user) return
@@ -168,9 +171,9 @@ export default function DashboardLayout() {
         : NOT_A_DOCTOR_MESSAGE
       void useAuthStore.getState().logout()
       Swal.fire({ icon: "error", title: "Can't open Documents", text: message, confirmButtonColor: "#0052cc" })
-      navigate("/signin", { replace: true })
+      navigate(signinUrl, { replace: true })
     }
-  }, [hydrated, token, user, navigate])
+  }, [hydrated, token, user, navigate, signinUrl])
 
   if (!hydrated || !token) return <PageLoader fullscreen />
   // Never render a frame of the dashboard for an account that's about to be
@@ -181,7 +184,7 @@ export default function DashboardLayout() {
     <div className="flex min-h-screen bg-[#f3f5f7]">
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 border-b border-[#e6ecf4]/80 bg-white/90 px-4 py-3 shadow-xs backdrop-blur-md sm:px-6">
+        <header className="sticky top-0 z-30 border-b border-[#e6ecf4]/80 bg-white/90 px-4 py-3 shadow-xs backdrop-blur-md sm:px-6 print:hidden">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 sm:hidden">
               <MobileNav />
