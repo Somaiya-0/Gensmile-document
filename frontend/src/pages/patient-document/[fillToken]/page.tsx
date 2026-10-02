@@ -54,18 +54,31 @@ export default function PatientFillFormPage() {
     }
   }
 
-  // Live updates while this form is open: only reacts to changes that are
-  // safe to apply without losing what the patient has already typed --
-  // submitted elsewhere (another tab, or a duplicate link), or the doctor
-  // turning the link off. Never overwrites `values`/`contact`/`form` fields
-  // from a background push, since the patient may be mid-answer.
+  // Live updates while this form is open: the doctor's edits and files show
+  // up right away, except in fields the patient has already changed here --
+  // what they typed is never overwritten. Also catches a submit from another
+  // tab and the doctor turning the link off.
+  const touchedRef = useRef(new Set<string>())
   const refreshFillStatus = useCallback(() => {
     getPatientFillForm(fillToken)
       .then((data) => {
         if (data.submitted && !submitted) {
           setForm(data)
           setSubmitted(true)
+          return
         }
+        const keepTouched = <T extends Record<string, unknown>>(prev: T, fresh: T): T => {
+          const merged = { ...fresh }
+          for (const key of touchedRef.current) if (key in prev) (merged as Record<string, unknown>)[key] = prev[key]
+          return merged
+        }
+        setValues((prev) => keepTouched(prev, data.values || {}))
+        setContact((prev) => keepTouched(prev, {
+          patient_name: data.patient_name || "",
+          patient_email: (data.values?.patient_email as string) || data.patient_email || "",
+          patient_phone: (data.values?.patient_phone as string) || data.patient_phone || "",
+        }))
+        setFiles(data.files || [])
       })
       .catch((error: unknown) => {
         const err = error as { status?: number }
@@ -79,6 +92,7 @@ export default function PatientFillFormPage() {
   usePublicDocumentLiveUpdates(fillToken ? `/patient-document/${fillToken}/ws` : null, refreshFillStatus)
 
   const handleChange = (key: string, value: unknown) => {
+    touchedRef.current.add(key)
     setValues((prev) => ({ ...prev, [key]: value }))
   }
 
@@ -90,7 +104,7 @@ export default function PatientFillFormPage() {
     try {
       for (const file of fileArray) {
         const uploaded = await uploadPatientFillFile(fillToken, file)
-        setFiles((prev) => [...prev, uploaded])
+        setFiles((prev) => [...prev.filter((f) => f.id !== uploaded.id), uploaded])
       }
     } catch (error: unknown) {
       const err = error as { message?: string }
@@ -110,6 +124,7 @@ export default function PatientFillFormPage() {
   }
 
   const handleContactChange = (key: keyof typeof contact, value: string) => {
+    touchedRef.current.add(key)
     setContact((prev) => ({ ...prev, [key]: value }))
   }
 

@@ -589,6 +589,8 @@ function DocumentDetailModal({
   // different doctor; sending the whole formData/customFields snapshot back
   // would silently overwrite whatever field(s) they just saved.
   const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(new Set())
+  const dirtyKeysRef = useRef(dirtyKeys)
+  dirtyKeysRef.current = dirtyKeys
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [sharing, setSharing] = useState<"patient" | "doctor" | null>(null)
@@ -602,23 +604,29 @@ function DocumentDetailModal({
 
   useEffect(() => {
     if (!document) return
-    // A background refresh (e.g. the patient just submitted their form) can
-    // hand us a newer copy while the doctor is mid-edit -- don't wipe what
-    // they're typing. The newer values load once they save or cancel.
-    if (editing && loadedDocIdRef.current === document.id) return
+    // A live update (another doctor, the patient, another tab) can hand us a
+    // newer copy while this doctor is mid-edit: take the new value for every
+    // field they haven't touched, keep what they're typing in the rest.
+    const merging = editing && loadedDocIdRef.current === document.id
     loadedDocIdRef.current = document.id
+    const keep = <T extends Record<string, unknown>>(prev: T, fresh: T): T => {
+      if (!merging) return fresh
+      const merged = { ...fresh }
+      for (const key of dirtyKeysRef.current) if (key in prev) (merged as Record<string, unknown>)[key] = prev[key]
+      return merged
+    }
     {
-      setFormData({
+      setFormData((prev) => keep(prev as Record<string, unknown>, {
         patient_name: document.patient_name || "",
         patient_email: document.patient_email || "",
         patient_phone: document.patient_phone || "",
         visit_date: document.visit_date ? document.visit_date.split("T")[0] : todayISO(),
         chief_concern: document.chief_concern || "",
         last_dds_visit: document.last_dds_visit || "",
-        cbct_taken: document.cbct_taken || false,
+        cbct_taken: document.cbct_taken ?? null,
         req_radiologist: document.req_radiologist || "",
         exam_salivary_ph: document.exam_salivary_ph || "",
-        recommend_salivary_test: document.recommend_salivary_test || false,
+        recommend_salivary_test: document.recommend_salivary_test ?? null,
         cbct_notes: document.cbct_notes || "",
         third_molar_ll: document.third_molar_ll || "",
         third_molar_lr: document.third_molar_lr || "",
@@ -629,17 +637,17 @@ function DocumentDetailModal({
         sinus_ul: document.sinus_ul || "",
         sinus_ur: document.sinus_ur || "",
         existing_rcts: document.existing_rcts || "",
-        any_into_sinus: document.any_into_sinus || false,
+        any_into_sinus: document.any_into_sinus ?? null,
         sinus_recommendations: document.sinus_recommendations || "",
         periodontal_condition: document.periodontal_condition || "",
         tx_recommendations: document.tx_recommendations || "",
-        md_referral: document.md_referral || false,
-        blood_test: document.blood_test || false,
+        md_referral: document.md_referral ?? null,
+        blood_test: document.blood_test ?? null,
         occlusion: document.occlusion || "",
         guidance: document.guidance || "",
         occlusion_recommendations: document.occlusion_recommendations || "",
-      })
-      setCustomFields(document.custom_fields || {})
+      }) as ClinicalFormData)
+      setCustomFields((prev) => keep(prev, document.custom_fields || {}))
     }
   }, [document, editing])
 
