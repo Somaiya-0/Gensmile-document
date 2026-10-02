@@ -438,13 +438,16 @@ export default function PatientFillFormPage() {
                       <FileText className="w-4 h-4 text-gray-400 shrink-0" />
                       <span className="text-xs text-gray-700 truncate flex-1">{file.file_name}</span>
                       <span className="text-[10px] text-gray-400 shrink-0">{(file.file_size / 1024).toFixed(1)} KB</span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveFile(file.id)}
-                        className="p-0.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-600 shrink-0"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
+                      {/* Patients can only remove their own uploads, not the doctor's. */}
+                      {file.uploaded_by_patient && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveFile(file.id)}
+                          className="p-0.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-600 shrink-0"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
