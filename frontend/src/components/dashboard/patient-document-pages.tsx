@@ -101,6 +101,20 @@ const FIELD_TYPE_LABELS: Record<FieldConfig["type"], string> = {
 // Shared by both field-builder implementations (the modal and the standalone
 // page version) -- shows what the field will actually look like, and which
 // section it lands in, before the doctor commits to adding it.
+// Asked before closing a form that has unsaved input.
+async function confirmDiscard(): Promise<boolean> {
+  const r = await Swal.fire({
+    icon: "warning",
+    title: "Do you want to close?",
+    text: "Your unsaved changes will be lost.",
+    showCancelButton: true,
+    confirmButtonText: "Discard",
+    cancelButtonText: "Keep editing",
+    confirmButtonColor: "#dc2626",
+  })
+  return r.isConfirmed
+}
+
 function AddFieldModal({
   isOpen,
   onClose,
@@ -726,6 +740,11 @@ function DocumentDetailModal({
     }
   }
 
+  const requestClose = async () => {
+    if (editing && dirtyKeys.size > 0 && !(await confirmDiscard())) return
+    onClose()
+  }
+
   const markDirty = (key: string) => setDirtyKeys((prev) => (prev.has(key) ? prev : new Set(prev).add(key)))
 
   const handlePrint = () => window.open(`/documents/print/${document.id}`, "_blank")
@@ -802,7 +821,7 @@ function DocumentDetailModal({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-      <div className="absolute inset-0" onClick={onClose} />
+      <div className="absolute inset-0" onClick={requestClose} />
       <div className="relative bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90dvh] overflow-hidden flex flex-col">
         <div className="shrink-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -883,7 +902,7 @@ function DocumentDetailModal({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <button onClick={onClose} className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 shrink-0"><X className="w-4 h-4" /></button>
+            <button onClick={requestClose} className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 shrink-0"><X className="w-4 h-4" /></button>
           </div>
         </div>
 
@@ -1744,6 +1763,20 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
     }
   }
 
+  const createFormDirty =
+    Object.entries(formData).some(([k, v]) => k !== "visit_date" && v !== "" && v != null) ||
+    formData.visit_date !== todayISO() ||
+    Object.values(customFields).some((v) => v !== "" && v != null) ||
+    !!logoFile || attachments.length > 0
+  const requestCloseCreate = async () => {
+    if (createFormDirty) {
+      if (!(await confirmDiscard())) return
+      setFormData({ visit_date: todayISO() }); setCustomFields({})
+      setLogoFile(null); setLogoPreview(null); setAttachments([])
+    }
+    setShowCreateModal(false)
+  }
+
   const handleInputChange = (key: string, value: unknown) => setFormData((prev) => ({ ...prev, [key]: value }))
   const handleCustomFieldChange = (key: string, value: unknown) => setCustomFields((prev) => ({ ...prev, [key]: value }))
 
@@ -1903,11 +1936,11 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
 
       {/* Create-document modal: quick "share for doctor" panel + the full form */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setShowCreateModal(false)}>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={requestCloseCreate}>
           <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
               <h2 className="text-base font-semibold text-gray-900">New Document</h2>
-              <button onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
+              <button onClick={requestCloseCreate} className="text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
             </div>
             <div className="space-y-6 overflow-y-auto overscroll-none px-6 py-5">
               <ShareToDoctorPanel
