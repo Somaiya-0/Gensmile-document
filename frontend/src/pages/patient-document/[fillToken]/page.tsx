@@ -5,6 +5,7 @@ import { deletePatientFillFile, downloadPatientFillZip, getPatientFillForm, subm
 import { usePublicDocumentLiveUpdates } from "@/hooks/use-public-document-live-updates"
 import { saveBlobAsFile } from "@/lib/utils"
 import type { PatientDocumentFileRead, PatientFillFormRead } from "@/lib/api-types"
+import { YesNoBoxes, yesNoLabel } from "@/components/ui/yes-no"
 
 const SECTION_ORDER_FALLBACK = 999
 
@@ -185,7 +186,7 @@ export default function PatientFillFormPage() {
 
   const printFieldValue = (field: PatientFillFormRead["fields"][number]): string => {
     const v = values[field.key]
-    if (field.type === "checkbox") return v ? "Yes" : "No"
+    if (field.type === "checkbox") return yesNoLabel(v)
     return (v as string) || "—"
   }
 
@@ -363,16 +364,7 @@ export default function PatientFillFormPage() {
                     </label>
 
                     {field.type === "checkbox" ? (
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={!!values[field.key]}
-                          onChange={(e) => handleChange(field.key, e.target.checked)}
-                          required={field.required}
-                          className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                        />
-                        <span className="text-sm text-gray-600">{values[field.key] ? "Yes" : "No"}</span>
-                      </div>
+                      <YesNoBoxes value={values[field.key]} onChange={(v) => handleChange(field.key, v)} required={field.required} size="w-5 h-5" />
                     ) : field.type === "textarea" ? (
                       <textarea
                         value={(values[field.key] as string) || ""}

@@ -28,6 +28,7 @@ import { saveBlobAsFile } from "@/lib/utils"
 import { useAuthStore } from "@/stores/auth-store"
 import { PageLoader } from "@/components/ui/spinner"
 import type { FieldConfig, PatientDocumentFileRead, PatientDocumentPublicRead } from "@/lib/api-types"
+import { YesNoBoxes, yesNoLabel } from "@/components/ui/yes-no"
 
 const SECTION_ORDER_FALLBACK = 999
 
@@ -73,7 +74,7 @@ function EditableField({
   editing: boolean
   onChange: (value: unknown) => void
 }) {
-  const displayValue = field.type === "checkbox" ? (value ? "Yes" : "No") : (value as string) || "—"
+  const displayValue = field.type === "checkbox" ? yesNoLabel(value) : (value as string) || "—"
 
   if (!editing) {
     return (
@@ -90,15 +91,7 @@ function EditableField({
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1.5">{field.label}</label>
       {field.type === "checkbox" ? (
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={!!value}
-            onChange={(e) => onChange(e.target.checked)}
-            className="w-5 h-5 text-blue-600 border-gray-300 rounded"
-          />
-          <span className="text-sm text-gray-600">{value ? "Yes" : "No"}</span>
-        </div>
+        <YesNoBoxes value={value} onChange={onChange} size="w-5 h-5" />
       ) : field.type === "textarea" ? (
         <textarea
           value={(value as string) || ""}
@@ -382,7 +375,7 @@ export default function DoctorToDoctorSharePage() {
 
   const printFieldValue = (field: FieldConfig): string => {
     const v = document.values?.[field.key]
-    if (field.type === "checkbox") return v ? "Yes" : "No"
+    if (field.type === "checkbox") return yesNoLabel(v)
     return (v as string) || "—"
   }
 

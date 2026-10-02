@@ -30,6 +30,7 @@ import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { useDocumentsLiveUpdates } from "@/hooks/use-documents-live-updates"
 import { saveBlobAsFile } from "@/lib/utils"
 import { ChangeHistoryModal } from "@/components/dashboard/change-history-modal"
+import { YesNoBoxes, yesNoLabel } from "@/components/ui/yes-no"
 
 // "select" (Dropdown) is intentionally left out -- no longer offered as a
 // type for new fields. FIELD_TYPE_LABELS below still needs a "select" entry
@@ -212,7 +213,7 @@ function AddFieldModal({
             {type === "textarea" ? (
               <textarea disabled rows={2} placeholder="Answer goes here" className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm bg-gray-50" />
             ) : type === "checkbox" ? (
-              <div className="flex items-center gap-2 text-sm text-gray-500"><input type="checkbox" disabled /> Yes / No</div>
+              <YesNoBoxes value={null} disabled />
             ) : type === "date" ? (
               <input disabled type="date" className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm bg-gray-50" />
             ) : type === "select" ? (
@@ -773,7 +774,7 @@ function DocumentDetailModal({
     if (!editing) {
       let displayValue: string
       if (field.type === "checkbox") {
-        displayValue = value ? "✓ Yes" : "✗ No"
+        displayValue = yesNoLabel(value)
       } else {
         displayValue = (value as string) || "—"
       }
@@ -789,7 +790,7 @@ function DocumentDetailModal({
     return (
       <FieldShell key={field.key} label={field.label}>
         {field.type === "checkbox" ? (
-          <input type="checkbox" checked={!!value} onChange={(e) => setValue(e.target.checked)} className="w-4 h-4 text-blue-600" />
+          <YesNoBoxes value={value} onChange={setValue} />
         ) : field.type === "textarea" ? (
           <textarea value={(value as string) || ""} onChange={(e) => setValue(e.target.value)} rows={3} className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-blue-500 outline-none resize-none" />
         ) : (
@@ -1403,7 +1404,7 @@ function DocumentFormFields({
                   <div key={field.key} className={field.type === "textarea" ? "sm:col-span-2" : ""}>
                     <label className="block text-[11px] font-medium text-gray-600 mb-1">{field.label}{field.required && <span className="text-red-500"> *</span>}</label>
                     {field.type === "checkbox" ? (
-                      <input type="checkbox" checked={!!value} onChange={(e) => { if (isCore) handleInputChange(field.key, e.target.checked); else handleCustomFieldChange(field.key, e.target.checked) }} className="w-4 h-4 text-blue-600" />
+                      <YesNoBoxes value={value} onChange={(v) => { if (isCore) handleInputChange(field.key, v); else handleCustomFieldChange(field.key, v) }} />
                     ) : field.type === "textarea" ? (
                       <textarea value={(value as string) || ""} onChange={(e) => { if (isCore) handleInputChange(field.key, e.target.value); else handleCustomFieldChange(field.key, e.target.value) }} rows={2} placeholder={`Enter ${field.label.toLowerCase()}...`} className="w-full px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:border-blue-500 outline-none resize-none" />
                     ) : field.type === "date" ? (

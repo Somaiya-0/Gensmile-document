@@ -76,6 +76,13 @@ async function fetchWithAuthRetry(url: string, init: RequestInit, token: string)
   return fetch(url, { ...init, headers: { ...init.headers, ...authHeaders(newToken) } })
 }
 
+function waitForNetwork(delayMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    if (navigator.onLine) return setTimeout(resolve, delayMs)
+    window.addEventListener("online", () => resolve(), { once: true })
+  })
+}
+
 async function uploadPatientDocumentFile(
   token: string,
   path: string,
@@ -84,10 +91,24 @@ async function uploadPatientDocumentFile(
   const formData = new FormData()
   formData.append("file", file)
   const baseUrl = getApiBaseUrl()
-  const response = await fetchWithAuthRetry(`${baseUrl}${path}`, {
-    method: "POST",
-    body: formData,
-  }, token)
+  // Survive a dropped connection: on a network error (or a gateway 502-504
+  // while the server restarts) wait until the browser is back online, then
+  // retry the same file. The spinner just keeps spinning meanwhile.
+  // ponytail: retry lives in memory only, a page reload while offline loses
+  // the pending upload; persist to IndexedDB if that turns out to matter.
+  let response: Response
+  for (let attempt = 0; ; attempt++) {
+    try {
+      response = await fetchWithAuthRetry(`${baseUrl}${path}`, {
+        method: "POST",
+        body: formData,
+      }, token)
+      if (![502, 503, 504].includes(response.status)) break
+    } catch (err) {
+      if (!(err instanceof TypeError)) throw err
+    }
+    await waitForNetwork(Math.min(1000 * 2 ** attempt, 30_000))
+  }
   if (!response.ok) {
     const err = await response.json().catch(() => ({}))
     throw new ApiError(err.detail || "Upload failed", response.status, err)
