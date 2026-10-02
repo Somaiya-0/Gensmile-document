@@ -76,6 +76,7 @@ def _file_read(f: PatientDocumentFile) -> PatientDocumentFileRead:
         file_size=f.file_size,
         file_url=s3_service.get_presigned_url(f.file_key, download_filename=f.file_name),
         uploaded_by_patient=f.uploaded_by_patient,
+        uploaded_by=f.uploaded_by,
         created_at=f.created_at,
     )
 
@@ -1067,6 +1068,63 @@ async def resolve_documents_profile_id(db: AsyncSession, user: UserAccount) -> U
     doctor's for staff). Same role and staff-permission checks as every
     doctor-side documents route."""
     return (await _require_doctor(db, user)).id
+
+
+async def upload_shared_document_file(
+    db: AsyncSession, user: UserAccount, share_token: str, file: UploadFile
+) -> PatientDocumentFileRead | None:
+    """Doctor-to-doctor: any authenticated doctor/staff account with the link
+    attaches a file. Logged under their name, like their field edits."""
+    await _require_doctor(db, user)
+    doc = await _get_shared_document(db, share_token)
+    if not doc:
+        return None
+
+    key, content_type, size = await s3_service.upload_file_to_s3(
+        file, prefix="documents", allowed_types=None  # Allow all file types
+    )
+    file_type = s3_service.get_file_type_category(content_type, file.filename)
+
+    doc_file = PatientDocumentFile(
+        document_id=doc.id,
+        file_name=file.filename or "file",
+        file_key=key,
+        file_type=file_type,
+        file_size=size,
+        uploaded_by=user.id,
+        uploaded_by_patient=False,
+    )
+    db.add(doc_file)
+    _add_change_log(db, doc.id, user, "file", None, "Attachment", None, f"Uploaded {doc_file.file_name}")
+    await emit_event(db, doc.doctor_profile_id, {"type": "document_updated", "document_id": str(doc.id)})
+    await db.commit()
+    await db.refresh(doc_file)
+    return _file_read(doc_file)
+
+
+async def delete_shared_document_file(db: AsyncSession, user: UserAccount, share_token: str, file_id: UUID) -> bool:
+    """Doctor-to-doctor: a doctor removes a file THEY uploaded through the
+    link -- never the owner's or the patient's files."""
+    await _require_doctor(db, user)
+    doc = await _get_shared_document(db, share_token)
+    if not doc:
+        return False
+
+    stmt = select(PatientDocumentFile).where(
+        PatientDocumentFile.id == file_id,
+        PatientDocumentFile.document_id == doc.id,
+        PatientDocumentFile.uploaded_by == user.id,
+    )
+    doc_file = await db.scalar(stmt)
+    if not doc_file:
+        return False
+
+    await s3_service.delete_file_from_s3(doc_file.file_key)
+    _add_change_log(db, doc.id, user, "file", None, "Attachment", doc_file.file_name, "Removed")
+    await db.delete(doc_file)
+    await emit_event(db, doc.doctor_profile_id, {"type": "document_updated", "document_id": str(doc.id)})
+    await db.commit()
+    return True
 
 
 async def upload_patient_fill_file(

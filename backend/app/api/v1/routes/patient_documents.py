@@ -16,6 +16,7 @@ from app.controllers.patient_document_controller import (
     delete_document_file,
     delete_patient_document,
     delete_patient_fill_file,
+    delete_shared_document_file,
     get_document_form_config,
     get_document_form_config_by_share_token,
     get_patient_document,
@@ -36,6 +37,7 @@ from app.controllers.patient_document_controller import (
     upload_document_file,
     upload_document_logo,
     upload_patient_fill_file,
+    upload_shared_document_file,
 )
 from app.core.security import decode_access_token
 from app.db.session import async_session_factory
@@ -433,6 +435,46 @@ async def update_doctor_to_doctor_document(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found or no longer available")
     return document
+
+
+@router.post(
+    "/doctor-to-doctor/documents/{share_token}/files",
+    response_model=PatientDocumentFileRead,
+    status_code=status.HTTP_201_CREATED,
+    responses={**_AUTH, **_404},
+)
+async def upload_doctor_to_doctor_file_route(
+    share_token: str,
+    current_user: Annotated[UserAccount, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+    file: UploadFile = File(...),
+) -> PatientDocumentFileRead:
+    """Doctor-authenticated: attach a file to the shared document."""
+    try:
+        result = await upload_shared_document_file(db=db, user=current_user, share_token=share_token, file=file)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    if not result:
+        raise HTTPException(status_code=404, detail="Document not found or no longer available")
+    return result
+
+
+@router.delete(
+    "/doctor-to-doctor/documents/{share_token}/files/{file_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={**_AUTH, **_404},
+)
+async def delete_doctor_to_doctor_file_route(
+    share_token: str,
+    file_id: UUID,
+    current_user: Annotated[UserAccount, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> None:
+    """Doctor-authenticated: remove a file this doctor uploaded via the link."""
+    if not await delete_shared_document_file(db=db, user=current_user, share_token=share_token, file_id=file_id):
+        raise HTTPException(status_code=404, detail="File not found")
 
 
 @router.get(

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useParams, useNavigate, useLocation, Link } from "react-router-dom"
 import Swal from "sweetalert2"
 import {
@@ -17,9 +17,12 @@ import {
   Settings,
   History,
   LogOut,
+  Upload,
+  X,
 } from "lucide-react"
 import {
   downloadDoctorToDoctorZip, getDoctorToDoctorDocument, updateDoctorToDoctorDocument,
+  uploadDoctorToDoctorFile, deleteDoctorToDoctorFile,
 } from "@/lib/api-client"
 import { FormSettingsModal } from "@/components/dashboard/patient-document-pages"
 import { ChangeHistoryModal } from "@/components/dashboard/change-history-modal"
@@ -161,6 +164,9 @@ export default function DoctorToDoctorSharePage() {
   const hydrated = useAuthStore((s) => s.hydrated)
   const accessToken = useAuthStore((s) => s.accessToken)
   const logout = useAuthStore((s) => s.logout)
+  const userId = useAuthStore((s) => s.user?.id)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
 
   const [document, setDocument] = useState<PatientDocumentPublicRead | null>(null)
   const [loading, setLoading] = useState(true)
@@ -261,6 +267,31 @@ export default function DoctorToDoctorSharePage() {
       // ignore -- user can just click again
     } finally {
       setDownloading(false)
+    }
+  }
+
+  const handleFileUpload = async (files: File[]) => {
+    if (!accessToken || !token) return
+    setUploading(true)
+    try {
+      for (const file of files) await uploadDoctorToDoctorFile(accessToken, token, file)
+    } catch (error) {
+      Swal.fire({ icon: "error", title: "Upload failed", text: (error as Error).message })
+    } finally {
+      setUploading(false)
+      refreshDocument()
+    }
+  }
+
+  const handleDeleteFile = async (fileId: string) => {
+    if (!accessToken || !token) return
+    const confirmed = await Swal.fire({ icon: "warning", title: "Remove this file?", showCancelButton: true, confirmButtonText: "Remove", confirmButtonColor: "#dc2626" })
+    if (!confirmed.isConfirmed) return
+    try {
+      await deleteDoctorToDoctorFile(accessToken, token, fileId)
+      refreshDocument()
+    } catch (error) {
+      Swal.fire({ icon: "error", title: "Couldn't remove", text: (error as Error).message })
     }
   }
 
@@ -601,6 +632,15 @@ export default function DoctorToDoctorSharePage() {
         <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-base font-semibold text-gray-900">Attached Files ({document.files?.length || 0})</h2>
+            {editing && (
+              <>
+                <input ref={fileInputRef} type="file" accept="*/*" multiple className="hidden" onChange={(e) => { const files = Array.from(e.target.files || []); if (files.length) void handleFileUpload(files); e.target.value = "" }} />
+                <button onClick={() => fileInputRef.current?.click()} disabled={uploading} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-60">
+                  {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                  {uploading ? "Uploading…" : "Add Files"}
+                </button>
+              </>
+            )}
           </div>
 
           {!document.files || document.files.length === 0 ? (
@@ -648,6 +688,11 @@ export default function DoctorToDoctorSharePage() {
                         Download
                       </a>
                     </div>
+                  )}
+                  {editing && userId && file.uploaded_by === userId && (
+                    <button onClick={() => void handleDeleteFile(file.id)} title="Remove file" className="p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 shrink-0">
+                      <X className="w-4 h-4" />
+                    </button>
                   )}
                 </div>
               ))}

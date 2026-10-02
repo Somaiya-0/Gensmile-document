@@ -315,6 +315,18 @@ export async function submitPatientFillForm(
   })
 }
 
+export async function uploadDoctorToDoctorFile(token: string, shareToken: string, file: File): Promise<PatientDocumentFileRead> {
+  const response = await uploadPatientDocumentFile(token, `/doctor-to-doctor/documents/${shareToken}/files`, file)
+  return response.json()
+}
+
+export async function deleteDoctorToDoctorFile(token: string, shareToken: string, fileId: string): Promise<void> {
+  await apiRequest<unknown>(`/doctor-to-doctor/documents/${shareToken}/files/${fileId}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  })
+}
+
 export async function uploadPatientFillFile(
   fillToken: string,
   file: File,

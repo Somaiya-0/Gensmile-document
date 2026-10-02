@@ -99,6 +99,7 @@ class PatientDocumentFileRead(BaseModel):
     file_size: int
     file_url: str | None = None
     uploaded_by_patient: bool = False
+    uploaded_by: UUID | None = None
     created_at: datetime
 
 

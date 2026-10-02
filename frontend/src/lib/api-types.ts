@@ -119,6 +119,7 @@ type PatientDocumentFileRead = {
   file_size: number
   file_url: string | null
   uploaded_by_patient: boolean
+  uploaded_by?: string | null
   created_at: string
 }
 
