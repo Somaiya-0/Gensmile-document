@@ -168,6 +168,12 @@ class Settings(BaseSettings):
         default="simulations",
         validation_alias=AliasChoices("S3_FOLDER", "s3_folder"),
     )
+    # Empty = AWS S3; set to an S3-compatible endpoint (Cloudflare R2) to use
+    # that instead. Read by app/services/s3_service.py.
+    s3_endpoint_url: str = Field(
+        default="",
+        validation_alias=AliasChoices("S3_ENDPOINT_URL", "s3_endpoint_url"),
+    )
 
     # Rate limiting
     rate_limit_login: str = Field(
