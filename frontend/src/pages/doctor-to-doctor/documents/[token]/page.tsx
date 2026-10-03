@@ -33,6 +33,7 @@ import { useAuthStore } from "@/stores/auth-store"
 import { PageLoader } from "@/components/ui/spinner"
 import type { FieldConfig, PatientDocumentFileRead, PatientDocumentPublicRead } from "@/lib/api-types"
 import { YesNoBoxes, yesNoLabel } from "@/components/ui/yes-no"
+import { ModalExit } from "@/components/ui/modal-exit"
 
 const SECTION_ORDER_FALLBACK = 999
 
@@ -727,7 +728,7 @@ export default function DoctorToDoctorSharePage() {
         </div>
       )}
 
-      {showHistory && <ChangeHistoryModal changes={document.changes} onClose={() => setShowHistory(false)} />}
+      <ModalExit show={showHistory}>{showHistory && <ChangeHistoryModal changes={document.changes} onClose={() => setShowHistory(false)} />}</ModalExit>
 
       <FormSettingsModal
         isOpen={showFormSettings}

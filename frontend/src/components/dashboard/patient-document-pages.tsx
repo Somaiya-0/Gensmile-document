@@ -31,6 +31,7 @@ import { useDocumentsLiveUpdates } from "@/hooks/use-documents-live-updates"
 import { saveBlobAsFile } from "@/lib/utils"
 import { ChangeHistoryModal } from "@/components/dashboard/change-history-modal"
 import { YesNoBoxes, yesNoLabel } from "@/components/ui/yes-no"
+import { ModalExit } from "@/components/ui/modal-exit"
 
 // "select" (Dropdown) is intentionally left out -- no longer offered as a
 // type for new fields. FIELD_TYPE_LABELS below still needs a "select" entry
@@ -144,7 +145,6 @@ function AddFieldModal({
     setSection(existingSections[0] || "Other")
   }, [isOpen, existingSections])
 
-  if (!isOpen) return null
 
   const resolvedSection = section.trim() || "Other"
   const isNewSection = customSection || !existingSections.includes(resolvedSection)
@@ -155,6 +155,7 @@ function AddFieldModal({
   }
 
   return (
+    <ModalExit show={isOpen}>{isOpen && (
     <div className="modal-in fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div className="w-full max-w-md rounded-2xl bg-white max-h-[90dvh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="overflow-y-auto overscroll-none p-5 space-y-4">
@@ -262,6 +263,7 @@ function AddFieldModal({
         </div>
       </div>
     </div>
+    )}</ModalExit>
   )
 }
 
@@ -455,7 +457,6 @@ export function FormSettingsModal({
     })
   }
 
-  if (!isOpen) return null
 
   const sections: Record<string, FieldConfig[]> = {}
   fields.forEach((field) => {
@@ -465,6 +466,7 @@ export function FormSettingsModal({
   })
 
   return (
+    <ModalExit show={isOpen}>{isOpen && (
     <>
     <div className="modal-in fixed inset-0 z-[65] flex items-center justify-center bg-black/50 p-4">
       <div className="absolute inset-0" onClick={onClose} />
@@ -550,6 +552,7 @@ export function FormSettingsModal({
       existingSections={Object.keys(sections)}
     />
     </>
+    )}</ModalExit>
   )
 }
 
@@ -993,7 +996,7 @@ function DocumentDetailModal({
         </div>
       </div>
 
-      {showHistory && <ChangeHistoryModal changes={history} onClose={() => setShowHistory(false)} />}
+      <ModalExit show={showHistory}>{showHistory && <ChangeHistoryModal changes={history} onClose={() => setShowHistory(false)} />}</ModalExit>
 
       <FormSettingsModal
         isOpen={showFormSettings}
@@ -1269,7 +1272,7 @@ function ShareToDoctorPanel({
           : "Receiving doctor must sign in with their own account, then can view, edit, and change form settings — every edit is logged with their name."}
       </div>
 
-      {showNewPatientModal && (
+      <ModalExit show={!!(showNewPatientModal)}>{showNewPatientModal && (
         <div className="modal-in fixed inset-0 z-[75] flex items-center justify-center bg-black/50 p-4">
           <div className="absolute inset-0" onClick={() => setShowNewPatientModal(false)} />
           <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[80dvh] overflow-hidden flex flex-col">
@@ -1292,7 +1295,7 @@ function ShareToDoctorPanel({
             </div>
           </div>
         </div>
-      )}
+      )}</ModalExit>
     </div>
   )
 }
@@ -1776,12 +1779,24 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
   }, [deepLinkedDocId])
 
   const handleViewDocument = async (docId: string, startEditing = false) => {
-    try {
-      setSelectedDoc(await getPatientDocument(token, docId))
-      setShowDetailModal(true)
+    // Open instantly from the list's copy (same shape), then swap in the
+    // server's latest -- waiting on the round trip first made every form
+    // feel slow to open.
+    const cached = documents.find((d) => d.id === docId)
+    if (cached) {
+      setSelectedDoc(cached)
       setDetailModalStartEditing(startEditing)
+      setShowDetailModal(true)
+    }
+    try {
+      const fresh = await getPatientDocument(token, docId)
+      setSelectedDoc((cur) => (!cached || cur?.id === docId ? fresh : cur))
+      if (!cached) {
+        setDetailModalStartEditing(startEditing)
+        setShowDetailModal(true)
+      }
     } catch (e) {
-      Swal.fire({ icon: "error", title: "Couldn't load", text: errMsg(e) })
+      if (!cached) Swal.fire({ icon: "error", title: "Couldn't load", text: errMsg(e) })
     }
   }
 
@@ -1937,9 +1952,9 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
           </div>
         </div>
 
-        {showDetailModal && selectedDoc && (
+        <ModalExit show={!!(showDetailModal && selectedDoc)}>{showDetailModal && selectedDoc && (
           <DocumentDetailModal document={selectedDoc} startInEditMode={detailModalStartEditing} onClose={() => setShowDetailModal(false)} onUpdate={handleUpdateDocument} onDelete={handleDeleteDocument} onDefaultFormConfigChanged={loadFormConfig} />
-        )}
+        )}</ModalExit>
         <FormSettingsModal isOpen={showDefaultFormSettings} onClose={() => setShowDefaultFormSettings(false)} documentId={null} isDefault onSaved={loadFormConfig} />
       </>
     )
@@ -1980,7 +1995,7 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
       </div>
 
       {/* Create-document modal: quick "share for doctor" panel + the full form */}
-      {showCreateModal && (
+      <ModalExit show={!!(showCreateModal)}>{showCreateModal && (
         <div className="modal-in fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={requestCloseCreate}>
           <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
@@ -2024,11 +2039,11 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
             </div>
           </div>
         </div>
-      )}
+      )}</ModalExit>
 
-      {showDetailModal && selectedDoc && (
+      <ModalExit show={!!(showDetailModal && selectedDoc)}>{showDetailModal && selectedDoc && (
         <DocumentDetailModal document={selectedDoc} startInEditMode={detailModalStartEditing} onClose={() => setShowDetailModal(false)} onUpdate={handleUpdateDocument} onDelete={handleDeleteDocument} onDefaultFormConfigChanged={loadFormConfig} />
-      )}
+      )}</ModalExit>
       <FormSettingsModal isOpen={showDefaultFormSettings} onClose={() => setShowDefaultFormSettings(false)} documentId={null} isDefault onSaved={loadFormConfig} />
     </>
   )
