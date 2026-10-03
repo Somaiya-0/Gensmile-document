@@ -112,7 +112,7 @@ function Sidebar() {
   return (
     <aside className="hidden w-60 shrink-0 border-r border-[#e6ecf4] bg-white sm:block print:hidden">
       <div className="px-4 py-5">
-        <p className="px-2 text-lg font-semibold text-[#0f172a]">Documents</p>
+        <p className="px-2 text-lg font-semibold text-[#0f172a]">ShareTheFile</p>
       </div>
       <nav className="flex flex-col gap-1 px-3">
         {items.map(({ to, label, icon: Icon }) => (
@@ -191,7 +191,7 @@ export default function DashboardLayout() {
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 sm:hidden">
               <MobileNav />
-              <p className="text-base font-semibold text-[#0f172a]">Documents</p>
+              <p className="text-base font-semibold text-[#0f172a]">ShareTheFile</p>
             </div>
             <div className="ml-auto flex items-center gap-3">
               <UserMenu />
