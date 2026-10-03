@@ -570,6 +570,43 @@ function FieldShell({ label, children }: { label: string; children: React.ReactN
   )
 }
 
+// The edit form's values for a document -- also used as the modal's initial
+// state, so it opens already filled in instead of rendering empty and then
+// growing (which made the centered modal jump on open).
+function docToFormData(document: PatientDocumentRead): ClinicalFormData {
+  return {
+    patient_name: document.patient_name || "",
+    patient_email: document.patient_email || "",
+    patient_phone: document.patient_phone || "",
+    visit_date: document.visit_date ? document.visit_date.split("T")[0] : todayISO(),
+    chief_concern: document.chief_concern || "",
+    last_dds_visit: document.last_dds_visit || "",
+    cbct_taken: document.cbct_taken ?? null,
+    req_radiologist: document.req_radiologist || "",
+    exam_salivary_ph: document.exam_salivary_ph || "",
+    recommend_salivary_test: document.recommend_salivary_test ?? null,
+    cbct_notes: document.cbct_notes || "",
+    third_molar_ll: document.third_molar_ll || "",
+    third_molar_lr: document.third_molar_lr || "",
+    third_molar_ul: document.third_molar_ul || "",
+    third_molar_ur: document.third_molar_ur || "",
+    cavitations: document.cavitations || "",
+    third_molar_recommendations: document.third_molar_recommendations || "",
+    sinus_ul: document.sinus_ul || "",
+    sinus_ur: document.sinus_ur || "",
+    existing_rcts: document.existing_rcts || "",
+    any_into_sinus: document.any_into_sinus ?? null,
+    sinus_recommendations: document.sinus_recommendations || "",
+    periodontal_condition: document.periodontal_condition || "",
+    tx_recommendations: document.tx_recommendations || "",
+    md_referral: document.md_referral ?? null,
+    blood_test: document.blood_test ?? null,
+    occlusion: document.occlusion || "",
+    guidance: document.guidance || "",
+    occlusion_recommendations: document.occlusion_recommendations || "",
+  } as ClinicalFormData
+}
+
 function DocumentDetailModal({
   document, startInEditMode = false, onClose, onUpdate, onDelete, onDefaultFormConfigChanged,
 }: {
@@ -586,8 +623,8 @@ function DocumentDetailModal({
 }) {
   const token = useToken()
   const [editing, setEditing] = useState(startInEditMode)
-  const [formData, setFormData] = useState<ClinicalFormData>({})
-  const [customFields, setCustomFields] = useState<Record<string, unknown>>({})
+  const [formData, setFormData] = useState<ClinicalFormData>(() => docToFormData(document))
+  const [customFields, setCustomFields] = useState<Record<string, unknown>>(() => document.custom_fields || {})
   // Which field keys were actually edited this session (core -> formData,
   // custom -> customFields). Save sends only these -- this document may also
   // be open on a doctor-to-doctor share link right now, being edited by a
@@ -621,37 +658,7 @@ function DocumentDetailModal({
       return merged
     }
     {
-      setFormData((prev) => keep(prev as Record<string, unknown>, {
-        patient_name: document.patient_name || "",
-        patient_email: document.patient_email || "",
-        patient_phone: document.patient_phone || "",
-        visit_date: document.visit_date ? document.visit_date.split("T")[0] : todayISO(),
-        chief_concern: document.chief_concern || "",
-        last_dds_visit: document.last_dds_visit || "",
-        cbct_taken: document.cbct_taken ?? null,
-        req_radiologist: document.req_radiologist || "",
-        exam_salivary_ph: document.exam_salivary_ph || "",
-        recommend_salivary_test: document.recommend_salivary_test ?? null,
-        cbct_notes: document.cbct_notes || "",
-        third_molar_ll: document.third_molar_ll || "",
-        third_molar_lr: document.third_molar_lr || "",
-        third_molar_ul: document.third_molar_ul || "",
-        third_molar_ur: document.third_molar_ur || "",
-        cavitations: document.cavitations || "",
-        third_molar_recommendations: document.third_molar_recommendations || "",
-        sinus_ul: document.sinus_ul || "",
-        sinus_ur: document.sinus_ur || "",
-        existing_rcts: document.existing_rcts || "",
-        any_into_sinus: document.any_into_sinus ?? null,
-        sinus_recommendations: document.sinus_recommendations || "",
-        periodontal_condition: document.periodontal_condition || "",
-        tx_recommendations: document.tx_recommendations || "",
-        md_referral: document.md_referral ?? null,
-        blood_test: document.blood_test ?? null,
-        occlusion: document.occlusion || "",
-        guidance: document.guidance || "",
-        occlusion_recommendations: document.occlusion_recommendations || "",
-      }) as ClinicalFormData)
+      setFormData((prev) => keep(prev as Record<string, unknown>, docToFormData(document) as Record<string, unknown>) as ClinicalFormData)
       setCustomFields((prev) => keep(prev, document.custom_fields || {}))
     }
   }, [document, editing])
