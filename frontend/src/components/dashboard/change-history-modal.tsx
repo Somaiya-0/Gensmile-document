@@ -24,7 +24,7 @@ export function ChangeHistoryModal({
   onClose: () => void
 }) {
   return (
-    <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div className="modal-in fixed inset-0 z-[85] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div className="relative bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[80dvh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="shrink-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
           <div>

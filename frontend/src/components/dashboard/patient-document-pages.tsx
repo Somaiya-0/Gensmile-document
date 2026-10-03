@@ -155,7 +155,7 @@ function AddFieldModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div className="modal-in fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div className="w-full max-w-md rounded-2xl bg-white max-h-[90dvh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="overflow-y-auto overscroll-none p-5 space-y-4">
         <h3 className="text-base font-semibold text-gray-900">Add New Field</h3>
@@ -466,7 +466,7 @@ export function FormSettingsModal({
 
   return (
     <>
-    <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/50 p-4">
+    <div className="modal-in fixed inset-0 z-[65] flex items-center justify-center bg-black/50 p-4">
       <div className="absolute inset-0" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90dvh] overflow-hidden flex flex-col">
         <div className="shrink-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
@@ -841,7 +841,7 @@ function DocumentDetailModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+    <div className="modal-in fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
       <div className="absolute inset-0" onClick={requestClose} />
       <div className="relative bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90dvh] overflow-hidden flex flex-col">
         <div className="shrink-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
@@ -1270,7 +1270,7 @@ function ShareToDoctorPanel({
       </div>
 
       {showNewPatientModal && (
-        <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/50 p-4">
+        <div className="modal-in fixed inset-0 z-[75] flex items-center justify-center bg-black/50 p-4">
           <div className="absolute inset-0" onClick={() => setShowNewPatientModal(false)} />
           <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[80dvh] overflow-hidden flex flex-col">
             <div className="shrink-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
@@ -1329,7 +1329,7 @@ function DesktopRecommendedPopup() {
   }
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+    <div className="modal-in fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
         <h3 className="text-lg font-bold text-gray-900">Better on Desktop</h3>
         <p className="mt-2 text-sm leading-5 text-gray-600">
@@ -1981,7 +1981,7 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
 
       {/* Create-document modal: quick "share for doctor" panel + the full form */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={requestCloseCreate}>
+        <div className="modal-in fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={requestCloseCreate}>
           <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
               <h2 className="text-base font-semibold text-gray-900">New Document</h2>

@@ -323,3 +323,20 @@ img {
     opacity: 0;
   }
 }
+/* Modal entrance: backdrop fades in, panel (last child) rises and scales up.
+   Transform/opacity only, so it never shifts layout. */
+.modal-in {
+  animation: modal-fade-in 0.18s ease-out;
+}
+.modal-in > :last-child {
+  animation: modal-pop-in 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes modal-fade-in {
+  from { opacity: 0; }
+}
+@keyframes modal-pop-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal-in, .modal-in > :last-child { animation: none; }
+}
