@@ -1636,6 +1636,7 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [saving, setSaving] = useState(false)
+  const createRunRef = useRef(0)
   const [formFields, setFormFields] = useState<FieldConfig[]>([])
   const [formData, setFormData] = useState<Record<string, unknown>>({ visit_date: todayISO() })
   const [customFields, setCustomFields] = useState<Record<string, unknown>>({})
@@ -1711,26 +1712,38 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
       Swal.fire({ icon: "warning", title: "Patient name required" })
       return
     }
+    // Each create gets an id; "Continue upload in background" bumps
+    // createRunRef, detaching this run from the screen -- it still finishes,
+    // but must not touch the (now cleared, maybe refilled) form or open
+    // anything when it's done.
+    const runId = ++createRunRef.current
+    const onScreen = () => createRunRef.current === runId
+    const patientName = formData.patient_name as string
+    const logo = logoFile, files = attachments
     setSaving(true)
     try {
       const payload = { ...formData, custom_fields: customFields } as PatientDocumentCreate
       const newDoc = await createPatientDocument(token, payload)
 
-      if (logoFile) {
-        setUploadingLogo(true)
-        try { await uploadPatientDocumentLogo(token, newDoc.id, logoFile) }
+      if (logo) {
+        if (onScreen()) setUploadingLogo(true)
+        try { await uploadPatientDocumentLogo(token, newDoc.id, logo) }
         catch (e) { console.error("Logo upload failed:", e) }
-        finally { setUploadingLogo(false) }
+        finally { if (onScreen()) setUploadingLogo(false) }
       }
 
-      if (attachments.length > 0) {
-        setUploadingFiles(true)
-        try { for (const file of attachments) { await uploadPatientDocumentAttachment(token, newDoc.id, file) } }
+      if (files.length > 0) {
+        if (onScreen()) setUploadingFiles(true)
+        try { for (const file of files) { await uploadPatientDocumentAttachment(token, newDoc.id, file) } }
         catch (e) { console.error("File upload failed:", e) }
-        finally { setUploadingFiles(false) }
+        finally { if (onScreen()) setUploadingFiles(false) }
       }
 
       await refreshDocuments()
+      if (!onScreen()) {
+        void Swal.fire({ toast: true, position: "top-end", icon: "success", title: `Document for ${patientName} is ready`, text: "Files finished uploading.", timer: 4000, showConfirmButton: false })
+        return
+      }
       setFormData({ visit_date: todayISO() }); setCustomFields({})
       setLogoFile(null); setLogoPreview(null); setAttachments([])
 
@@ -1741,9 +1754,11 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
 
       Swal.fire({ icon: "success", title: "Document created!", timer: 1000, showConfirmButton: false })
     } catch (e) {
-      Swal.fire({ icon: "error", title: "Couldn't create", text: errMsg(e) })
+      Swal.fire(onScreen()
+        ? { icon: "error", title: "Couldn't create", text: errMsg(e) }
+        : { toast: true, position: "top-end", icon: "error", title: `Couldn't create the document for ${patientName}`, text: errMsg(e), timer: 6000, showConfirmButton: false })
     } finally {
-      setSaving(false)
+      if (onScreen()) setSaving(false)
     }
   }
 
@@ -1783,10 +1798,15 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
     Object.values(customFields).some((v) => v !== "" && v != null) ||
     !!logoFile || attachments.length > 0
   const requestCloseCreate = async () => {
-    // Mid-create (document saved, its files still uploading): the create
-    // finishes on its own, so don't wipe the form out from under it.
+    // Mid-create: let it finish in the background (handleCreate captured the
+    // form and files already), detach it from the screen, and give the
+    // doctor a clean form for the next document.
     if (saving || uploadingLogo || uploadingFiles) {
       if (!(await confirmDiscard({ uploading: true, unsaved: false }))) return
+      createRunRef.current++
+      setSaving(false); setUploadingLogo(false); setUploadingFiles(false)
+      setFormData({ visit_date: todayISO() }); setCustomFields({})
+      setLogoFile(null); setLogoPreview(null); setAttachments([])
     } else if (createFormDirty) {
       if (!(await confirmDiscard())) return
       setFormData({ visit_date: todayISO() }); setCustomFields({})
