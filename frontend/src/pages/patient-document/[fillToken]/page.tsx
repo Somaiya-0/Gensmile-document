@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom"
 import { CheckCircle2, Download, FileText, Loader2, AlertCircle, Printer, Upload, X } from "lucide-react"
 import { deletePatientFillFile, downloadPatientFillZip, getPatientFillForm, submitPatientFillForm, uploadPatientFillFile } from "@/lib/api-client"
 import { usePublicDocumentLiveUpdates } from "@/hooks/use-public-document-live-updates"
+import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { saveBlobAsFile } from "@/lib/utils"
 import type { PatientDocumentFileRead, PatientFillFormRead } from "@/lib/api-types"
 import { YesNoBoxes, yesNoLabel } from "@/components/ui/yes-no"
@@ -90,6 +91,8 @@ export default function PatientFillFormPage() {
   }, [fillToken, submitted])
 
   usePublicDocumentLiveUpdates(fillToken ? `/patient-document/${fillToken}/ws` : null, refreshFillStatus)
+  // Safety net if the live connection is down: re-check periodically and on tab focus.
+  useAutoRefresh(refreshFillStatus, { intervalMs: 30_000 })
 
   const handleChange = (key: string, value: unknown) => {
     touchedRef.current.add(key)

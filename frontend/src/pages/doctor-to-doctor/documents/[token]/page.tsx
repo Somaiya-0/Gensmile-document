@@ -27,6 +27,7 @@ import {
 import { FormSettingsModal } from "@/components/dashboard/patient-document-pages"
 import { ChangeHistoryModal } from "@/components/dashboard/change-history-modal"
 import { usePublicDocumentLiveUpdates } from "@/hooks/use-public-document-live-updates"
+import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { saveBlobAsFile } from "@/lib/utils"
 import { useAuthStore } from "@/stores/auth-store"
 import { PageLoader } from "@/components/ui/spinner"
@@ -255,6 +256,8 @@ export default function DoctorToDoctorSharePage() {
   // Instant: updates the moment any doctor (including this one, from another
   // tab) changes the document, no reload needed.
   usePublicDocumentLiveUpdates(token ? `/doctor-to-doctor/documents/${token}/ws` : null, refreshDocument)
+  // Safety net if the live connection is down: re-check periodically and on tab focus.
+  useAutoRefresh(refreshDocument, { intervalMs: 30_000 })
 
   const handleDownloadZip = async () => {
     if (!token || !accessToken) return
