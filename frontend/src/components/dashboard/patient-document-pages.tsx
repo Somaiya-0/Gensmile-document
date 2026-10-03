@@ -108,13 +108,14 @@ async function confirmDiscard({ uploading = false, unsaved = true } = {}): Promi
     icon: "warning",
     title: "Do you want to close?",
     text: [
-      uploading && "A file is still uploading. It will finish in the background, but you won't see when it's done.",
+      uploading && "A file is still uploading.",
       unsaved && "Your unsaved changes will be lost.",
     ].filter(Boolean).join(" "),
     showCancelButton: true,
-    confirmButtonText: unsaved ? "Discard" : "Close",
-    cancelButtonText: "Keep editing",
-    confirmButtonColor: "#dc2626",
+    confirmButtonText: uploading ? "Continue upload in background" : "Discard",
+    cancelButtonText: "Keep open",
+    // Red only when closing actually throws something away.
+    confirmButtonColor: unsaved ? "#dc2626" : "#2563eb",
   })
   return r.isConfirmed
 }
