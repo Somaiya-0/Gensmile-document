@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { useParams } from "react-router-dom"
-import { CheckCircle2, Download, FileText, Loader2, AlertCircle, Printer, Upload, X } from "lucide-react"
+import Swal from "sweetalert2"
+import { CheckCircle2, Download, Pencil, FileText, Loader2, AlertCircle, Printer, Upload, X } from "lucide-react"
 import { deletePatientFillFile, downloadPatientFillZip, getPatientFillForm, submitPatientFillForm, uploadPatientFillFile } from "@/lib/api-client"
 import { usePublicDocumentLiveUpdates } from "@/hooks/use-public-document-live-updates"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
@@ -21,6 +22,11 @@ export default function PatientFillFormPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  // After submitting, the form stays on screen read-only until the patient
+  // taps Edit. Separate from `submitted` (the server's status), which stays
+  // true while they edit, so a live refresh can't re-lock the form on them.
+  const [editingAfterSubmit, setEditingAfterSubmit] = useState(false)
+  const locked = submitted && !editingAfterSubmit
   const [files, setFiles] = useState<PatientDocumentFileRead[]>([])
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -158,7 +164,14 @@ export default function PatientFillFormPage() {
       })
       setForm(data)
       setSubmitted(true)
-      window.scrollTo({ top: 0, behavior: "smooth" })
+      setEditingAfterSubmit(false)
+      touchedRef.current.clear()
+      void Swal.fire({
+        icon: "success",
+        title: "Thanks, you're all set",
+        text: `Your responses have been sent to ${data.doctor_name ? `Dr. ${data.doctor_name}` : "your doctor"}. You can close this page, or tap Edit to change your answers.`,
+        confirmButtonColor: "#2563eb",
+      })
     } catch (error: unknown) {
       const err = error as { message?: string }
       setLoadError(err.message || "Failed to submit the form.")
@@ -318,19 +331,18 @@ export default function PatientFillFormPage() {
           </div>
         </div>
 
-        {submitted ? (
-          <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center space-y-3">
-            <CheckCircle2 className="w-12 h-12 text-green-600 mx-auto" />
-            <h2 className="text-base font-semibold text-gray-900">Thanks, you're all set</h2>
-            <p className="text-sm text-gray-600">
-              Your responses have been sent to {form.doctor_name ? `Dr. ${form.doctor_name}` : "your doctor"}. You can close this page.
-            </p>
-            <button type="button" onClick={() => setSubmitted(false)} className="text-sm text-blue-600 font-medium hover:text-blue-700">
-              Edit my answers
+        {locked && (
+          <div className="mb-5 flex items-center gap-3 rounded-2xl border border-green-200 bg-green-50 p-4">
+            <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />
+            <p className="flex-1 text-sm text-green-800">Submitted to {form.doctor_name ? `Dr. ${form.doctor_name}` : "your doctor"}.</p>
+            <button type="button" onClick={() => setEditingAfterSubmit(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-xs font-medium text-white hover:bg-blue-700">
+              <Pencil className="w-3.5 h-3.5" /> Edit
             </button>
           </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-5">
+        )}
+          <form onSubmit={handleSubmit}>
+          {/* Native disabled fieldset locks every input, tick box and upload button at once. */}
+          <fieldset disabled={locked} className="space-y-5 min-w-0">
             <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
               <h2 className="text-sm font-semibold text-gray-900">Your Information</h2>
 
@@ -477,7 +489,7 @@ export default function PatientFillFormPage() {
 
             {loadError && <p className="text-sm text-red-600 text-center bg-red-50 rounded-xl p-3">{loadError}</p>}
 
-            <button
+            {!locked && <button
               type="submit"
               disabled={submitting}
               className="w-full py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -488,11 +500,11 @@ export default function PatientFillFormPage() {
                   Submitting...
                 </span>
               ) : (
-                "Submit"
+                submitted ? "Save Changes" : "Submit"
               )}
-            </button>
+            </button>}
+          </fieldset>
           </form>
-        )}
       </div>
     </div>
   )
