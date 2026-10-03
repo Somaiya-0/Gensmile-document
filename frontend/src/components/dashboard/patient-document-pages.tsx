@@ -1182,7 +1182,7 @@ function ShareToDoctorPanel({
                 )}
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+            <PopoverContent className="z-[80] w-[var(--radix-popover-trigger-width)] p-0" align="start">
               <Command>
                 <CommandInput placeholder="Search patients..." value={patientSearch} onValueChange={setPatientSearch} />
                 <CommandList>
