@@ -12,6 +12,10 @@ Expected .env variables:
     AWS_SECRET_ACCESS_KEY=your-secret-key
     S3_FOLDER=simulations
 
+    # Optional: any S3-compatible store instead of AWS, e.g. Cloudflare R2:
+    # S3_ENDPOINT_URL=https://<account_id>.r2.cloudflarestorage.com
+    # S3_REGION=auto
+
 Files are stored privately in S3.
 Presigned URLs are generated for temporary access.
 """
@@ -61,6 +65,11 @@ AWS_ACCESS_KEY_ID = (
 
 AWS_SECRET_ACCESS_KEY = (
     os.getenv("AWS_SECRET_ACCESS_KEY") or None
+)
+
+# Empty = AWS S3. Set to an S3-compatible endpoint (Cloudflare R2) to use that.
+S3_ENDPOINT_URL = (
+    os.getenv("S3_ENDPOINT_URL", "").strip() or None
 )
 
 
@@ -191,6 +200,9 @@ def _client():
     if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
         kwargs["aws_access_key_id"] = AWS_ACCESS_KEY_ID
         kwargs["aws_secret_access_key"] = AWS_SECRET_ACCESS_KEY
+
+    if S3_ENDPOINT_URL:
+        kwargs["endpoint_url"] = S3_ENDPOINT_URL
 
     return boto3.client(**kwargs)
 
