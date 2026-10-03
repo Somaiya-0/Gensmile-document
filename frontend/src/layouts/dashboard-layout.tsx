@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react"
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom"
 import Swal from "sweetalert2"
-import { ChevronDown, FileText, LayoutDashboard, LogOut, Menu, Stethoscope, UserRound, Users } from "lucide-react"
+import { ChevronDown, FileText, LayoutDashboard, LogOut, Menu, Share2, Stethoscope, UserRound, Users } from "lucide-react"
 
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -63,6 +63,9 @@ const DOCTOR_NAV_ITEMS: NavItem[] = [
   { to: "/dashboard/doctor-to-patient", label: "Doctor to Patient", icon: Users },
 ]
 
+// Doctors/staff only -- "shared with me" has no meaning for an admin account.
+const SHARED_NAV_ITEM: NavItem = { to: "/dashboard/shared", label: "Shared Documents", icon: Share2 }
+
 const ADMIN_NAV_ITEMS: NavItem[] = [
   { to: "/dashboard/doctors", label: "Doctors", icon: UserRound },
 ]
@@ -72,7 +75,7 @@ function useNavItems(): NavItem[] {
   // Admins see everything doctors/staff see (Overview, Doctor to Doctor,
   // Doctor to Patient) plus their own doctor-management section -- the
   // pages themselves render a read-only, cross-doctor view for admins.
-  return isAdmin(user?.role) ? [...DOCTOR_NAV_ITEMS, ...ADMIN_NAV_ITEMS] : DOCTOR_NAV_ITEMS
+  return isAdmin(user?.role) ? [...DOCTOR_NAV_ITEMS, ...ADMIN_NAV_ITEMS] : [...DOCTOR_NAV_ITEMS, SHARED_NAV_ITEM]
 }
 
 function MobileNav() {

@@ -24,6 +24,7 @@ from app.controllers.patient_document_controller import (
     get_patient_document_public_doctor,
     get_patient_fill_document,
     list_patient_documents,
+    list_shared_with_me,
     resolve_document_id_by_fill_token,
     resolve_document_id_by_share_token,
     resolve_documents_profile_id,
@@ -53,6 +54,7 @@ from app.schemas.patient_document import (
     PatientDocumentUpdate,
     PatientFillFormRead,
     PatientFillFormSubmit,
+    SharedWithMeDocumentRead,
 )
 from app.services.document_events import document_events
 
@@ -135,6 +137,15 @@ async def list_my_patient_documents(
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> list[PatientDocumentRead]:
     return await list_patient_documents(db=db, user=current_user)
+
+
+@router.get("/patient-documents/shared-with-me", response_model=list[SharedWithMeDocumentRead], status_code=status.HTTP_200_OK, responses=_AUTH)
+async def list_documents_shared_with_me(
+    current_user: Annotated[UserAccount, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> list[SharedWithMeDocumentRead]:
+    """Documents other doctors shared with this doctor (opened via their link)."""
+    return await list_shared_with_me(db=db, user=current_user)
 
 
 @router.post("/patient-documents", response_model=PatientDocumentRead, status_code=status.HTTP_201_CREATED, responses=_AUTH)

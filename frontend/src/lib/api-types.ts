@@ -108,6 +108,15 @@ type DocumentFormConfigUpdate = {
   fields: FieldConfig[]
 }
 
+type SharedWithMeDocument = {
+  share_token: string
+  patient_name: string
+  owner_name: string
+  visit_date: string | null
+  updated_at: string
+  last_opened_at: string
+}
+
 type LogoUploadResponse = {
   logo_url: string
 }
@@ -331,6 +340,7 @@ export type {
   FormConfigUpdate,
   DocumentFormConfigUpdate,
   LogoUploadResponse,
+  SharedWithMeDocument,
   AdminDoctor,
   AdminDoctorCreate,
   AdminDocument,

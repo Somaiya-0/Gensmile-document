@@ -197,3 +197,14 @@ class LogoUploadResponse(BaseModel):
 class DocumentFormConfigUpdate(BaseModel):
     """Update a document's specific form configuration."""
     fields: list[dict]
+
+class SharedWithMeDocumentRead(BaseModel):
+    """One row of a doctor's "Shared Documents" list: a document another
+    doctor shared with them that they've opened through its link."""
+
+    share_token: str
+    patient_name: str
+    owner_name: str
+    visit_date: datetime | None = None
+    updated_at: datetime
+    last_opened_at: datetime

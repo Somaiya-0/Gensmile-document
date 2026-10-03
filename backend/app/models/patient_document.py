@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, Integer, JSON
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, Integer, JSON, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin, utc_now
@@ -182,3 +182,24 @@ class PatientDocumentChangeLog(UUIDPrimaryKeyMixin, Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False, index=True,
     )
+
+class PatientDocumentSharedAccess(UUIDPrimaryKeyMixin, Base):
+    """A doctor/staff account (outside the owner's practice) that opened a
+    doctor-to-doctor share link -- backs their "Shared Documents" list.
+
+    share_token is the link they opened: if the owner generates a new link
+    (or turns sharing off), the document drops off their list, same as the
+    old link stops working.
+    """
+
+    __tablename__ = "patient_document_shared_access"
+    __table_args__ = (UniqueConstraint("document_id", "user_id"),)
+
+    document_id: Mapped[UUID] = mapped_column(
+        ForeignKey("patient_documents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("user_accounts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    share_token: Mapped[str] = mapped_column(String(128), nullable=False)
+    last_opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)

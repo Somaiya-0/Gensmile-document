@@ -24,6 +24,7 @@ from app.models.patient_document import (
     PatientDocument,
     PatientDocumentChangeLog,
     PatientDocumentFile,
+    PatientDocumentSharedAccess,
 )
 from app.models.staff import StaffMember
 
@@ -42,6 +43,7 @@ __all__ = [
     "PatientDocument",
     "PatientDocumentChangeLog",
     "PatientDocumentFile",
+    "PatientDocumentSharedAccess",
     "PatientProfile",
     "PlanCode",
     "RefreshTokenSession",

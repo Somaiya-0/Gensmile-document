@@ -8,6 +8,7 @@ import type {
   FormConfigUpdate,
   DocumentFormConfigUpdate,
   LogoUploadResponse,
+  SharedWithMeDocument,
   PatientDocumentFileRead,
   PatientDocumentChangeLog,
   PatientDocumentRead,
@@ -114,6 +115,10 @@ async function uploadPatientDocumentFile(
     throw new ApiError(err.detail || "Upload failed", response.status, err)
   }
   return response
+}
+
+export async function listSharedWithMe(token: string): Promise<SharedWithMeDocument[]> {
+  return apiRequest<SharedWithMeDocument[]>("/patient-documents/shared-with-me", { headers: authHeaders(token) })
 }
 
 export async function listPatientDocuments(token: string): Promise<PatientDocumentRead[]> {

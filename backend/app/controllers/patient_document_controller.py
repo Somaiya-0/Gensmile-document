@@ -1,3 +1,4 @@
+import logging
 import secrets
 import io
 import os
@@ -6,6 +7,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -14,7 +16,7 @@ from app.services.document_events import emit_event
 from app.models import DoctorPatient, DoctorProfile, PatientProfile, UserAccount, UserRole
 from app.models.staff import StaffMember
 from app.models.base import utc_now
-from app.models.patient_document import PatientDocument, PatientDocumentChangeLog, PatientDocumentFile
+from app.models.patient_document import PatientDocument, PatientDocumentChangeLog, PatientDocumentFile, PatientDocumentSharedAccess
 from app.schemas.patient_document import (
     LogoUploadResponse,
     PatientDocumentChangeLogRead,
@@ -25,8 +27,11 @@ from app.schemas.patient_document import (
     PatientDocumentUpdate,
     PatientFillFormRead,
     PatientFillFormSubmit,
+    SharedWithMeDocumentRead,
 )
 from app.services import s3_service
+
+logger = logging.getLogger(__name__)
 
 FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:5173").rstrip("/")
 
@@ -946,15 +951,75 @@ async def update_document_form_config_by_share_token(
     return doc.form_config
 
 
+async def _record_shared_access(db: AsyncSession, doc: PatientDocument, user: UserAccount) -> None:
+    """Remember that this doctor opened this share link, for their Shared
+    Documents list. The page re-fetches on every live update, so only write
+    when something actually changed (new link, or >5 min since last time)."""
+    access = await db.scalar(select(PatientDocumentSharedAccess).where(
+        PatientDocumentSharedAccess.document_id == doc.id,
+        PatientDocumentSharedAccess.user_id == user.id,
+    ))
+    now = utc_now()
+    if access is not None and access.share_token == doc.share_token and (now - access.last_opened_at).total_seconds() <= 300:
+        return
+    try:
+        # Savepoint: if two tabs insert at the same instant, only this row is
+        # rolled back -- not the document the caller is about to read.
+        async with db.begin_nested():
+            if access is None:
+                db.add(PatientDocumentSharedAccess(document_id=doc.id, user_id=user.id, share_token=doc.share_token, last_opened_at=now))
+            else:
+                access.share_token, access.last_opened_at = doc.share_token, now
+    except IntegrityError:
+        return
+    except SQLAlchemyError:
+        # Never let bookkeeping break opening the document itself.
+        logger.exception("Couldn't record shared-document access")
+        return
+    await db.commit()
+
+
+async def list_shared_with_me(db: AsyncSession, user: UserAccount) -> list[SharedWithMeDocumentRead]:
+    profile = await _require_doctor(db, user)
+    stmt = (
+        select(PatientDocument, PatientDocumentSharedAccess.last_opened_at, UserAccount.full_name)
+        .join(PatientDocumentSharedAccess, PatientDocumentSharedAccess.document_id == PatientDocument.id)
+        .join(DoctorProfile, DoctorProfile.id == PatientDocument.doctor_profile_id)
+        .join(UserAccount, UserAccount.id == DoctorProfile.user_id)
+        .where(
+            PatientDocumentSharedAccess.user_id == user.id,
+            # Still the link they were given, and still shared.
+            PatientDocumentSharedAccess.share_token == PatientDocument.share_token,
+            PatientDocument.is_shared.is_(True),
+            PatientDocument.is_active.is_(True),
+            PatientDocument.doctor_profile_id != profile.id,
+        )
+        .order_by(PatientDocumentSharedAccess.last_opened_at.desc())
+    )
+    return [
+        SharedWithMeDocumentRead(
+            share_token=doc.share_token,
+            patient_name=doc.patient_name,
+            owner_name=owner_name or "Unknown doctor",
+            visit_date=doc.visit_date,
+            updated_at=doc.updated_at,
+            last_opened_at=last_opened_at,
+        )
+        for doc, last_opened_at, owner_name in (await db.execute(stmt)).all()
+    ]
+
+
 async def get_patient_document_public_doctor(
     db: AsyncSession, user: UserAccount, share_token: str
 ) -> PatientDocumentPublicRead | None:
     """Doctor-to-doctor: any authenticated doctor/staff account opens the
     share link and logs in first -- see _require_doctor. No longer anonymous."""
-    await _require_doctor(db, user)
+    profile = await _require_doctor(db, user)
     doc = await _get_shared_document(db, share_token)
     if not doc:
         return None
+    if doc.doctor_profile_id != profile.id:
+        await _record_shared_access(db, doc, user)
 
     editable_fields, values = await _resolve_fields_and_values(db, doc)
     changes = await _get_change_log(db, doc.id)

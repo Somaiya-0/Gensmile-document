@@ -45,6 +45,7 @@ const PageDashboardOverview = lazy(() => import("@/pages/dashboard/overview/page
 const PageDashboardDocuments = lazy(() => import("@/pages/dashboard/documents/page"))
 const PageDashboardDoctorToDoctor = lazy(() => import("@/pages/dashboard/doctor-to-doctor/page"))
 const PageDashboardDoctorToPatient = lazy(() => import("@/pages/dashboard/doctor-to-patient/page"))
+const PageDashboardShared = lazy(() => import("@/pages/dashboard/shared/page"))
 const PageDashboardDoctors = lazy(() => import("@/pages/dashboard/doctors/page"))
 
 export default function App() {
@@ -87,6 +88,7 @@ export default function App() {
           <Route path="documents" element={<PageBoundary Component={PageDashboardDocuments} />} />
           <Route path="doctor-to-doctor" element={<PageBoundary Component={PageDashboardDoctorToDoctor} />} />
           <Route path="doctor-to-patient" element={<PageBoundary Component={PageDashboardDoctorToPatient} />} />
+          <Route path="shared" element={<PageBoundary Component={PageDashboardShared} />} />
           <Route path="doctors" element={<PageBoundary Component={PageDashboardDoctors} />} />
         </Route>
 
