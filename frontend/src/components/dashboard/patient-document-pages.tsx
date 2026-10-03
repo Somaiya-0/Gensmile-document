@@ -101,14 +101,18 @@ const FIELD_TYPE_LABELS: Record<FieldConfig["type"], string> = {
 // Shared by both field-builder implementations (the modal and the standalone
 // page version) -- shows what the field will actually look like, and which
 // section it lands in, before the doctor commits to adding it.
-// Asked before closing a form that has unsaved input.
-async function confirmDiscard(): Promise<boolean> {
+// Asked before closing a form that has unsaved input or a file still uploading.
+// Closing doesn't cancel an upload -- it finishes in the background.
+async function confirmDiscard({ uploading = false, unsaved = true } = {}): Promise<boolean> {
   const r = await Swal.fire({
     icon: "warning",
     title: "Do you want to close?",
-    text: "Your unsaved changes will be lost.",
+    text: [
+      uploading && "A file is still uploading. It will finish in the background, but you won't see when it's done.",
+      unsaved && "Your unsaved changes will be lost.",
+    ].filter(Boolean).join(" "),
     showCancelButton: true,
-    confirmButtonText: "Discard",
+    confirmButtonText: unsaved ? "Discard" : "Close",
     cancelButtonText: "Keep editing",
     confirmButtonColor: "#dc2626",
   })
@@ -749,7 +753,8 @@ function DocumentDetailModal({
   }
 
   const requestClose = async () => {
-    if (editing && dirtyKeys.size > 0 && !(await confirmDiscard())) return
+    const unsaved = editing && dirtyKeys.size > 0
+    if ((uploading || unsaved) && !(await confirmDiscard({ uploading, unsaved }))) return
     onClose()
   }
 
@@ -1777,7 +1782,11 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
     Object.values(customFields).some((v) => v !== "" && v != null) ||
     !!logoFile || attachments.length > 0
   const requestCloseCreate = async () => {
-    if (createFormDirty) {
+    // Mid-create (document saved, its files still uploading): the create
+    // finishes on its own, so don't wipe the form out from under it.
+    if (saving || uploadingLogo || uploadingFiles) {
+      if (!(await confirmDiscard({ uploading: true, unsaved: false }))) return
+    } else if (createFormDirty) {
       if (!(await confirmDiscard())) return
       setFormData({ visit_date: todayISO() }); setCustomFields({})
       setLogoFile(null); setLogoPreview(null); setAttachments([])
