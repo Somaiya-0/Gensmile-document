@@ -441,7 +441,13 @@ const useAuthStore = create<AuthState>()(
           if (adopted) return adopted
 
           const currentRefreshToken = get().refreshToken
-          if (!currentRefreshToken) return null
+          if (!currentRefreshToken) {
+            // Expired access token and nothing to renew it with: sign out
+            // (the layouts then send the user to /signin) instead of leaving
+            // them on a page where every request quietly 401s.
+            if (get().accessToken) get().clearAuth()
+            return null
+          }
 
           try {
             const response = await apiRequest<TokenPairResponse>("/auth/refresh", {
