@@ -169,6 +169,10 @@ export default function DoctorToDoctorSharePage() {
   const userId = useAuthStore((s) => s.user?.id)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
+  // File changes wait for Save like field edits: added files aren't uploaded
+  // and removed files aren't deleted until this doctor saves.
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const [removedFileIds, setRemovedFileIds] = useState<Set<string>>(new Set())
 
   const [document, setDocument] = useState<PatientDocumentPublicRead | null>(null)
   const [loading, setLoading] = useState(true)
@@ -274,29 +278,13 @@ export default function DoctorToDoctorSharePage() {
     }
   }
 
-  const handleFileUpload = async (files: File[]) => {
-    if (!accessToken || !token) return
-    setUploading(true)
-    try {
-      for (const file of files) await uploadDoctorToDoctorFile(accessToken, token, file)
-    } catch (error) {
-      Swal.fire({ icon: "error", title: "Upload failed", text: (error as Error).message })
-    } finally {
-      setUploading(false)
-      refreshDocument()
-    }
-  }
-
-  const handleDeleteFile = async (fileId: string) => {
-    if (!accessToken || !token) return
-    const confirmed = await Swal.fire({ icon: "warning", title: "Remove this file?", showCancelButton: true, confirmButtonText: "Remove", confirmButtonColor: "#dc2626" })
-    if (!confirmed.isConfirmed) return
-    try {
-      await deleteDoctorToDoctorFile(accessToken, token, fileId)
-      refreshDocument()
-    } catch (error) {
-      Swal.fire({ icon: "error", title: "Couldn't remove", text: (error as Error).message })
-    }
+  const toggleRemoveFile = (fileId: string) => {
+    setRemovedFileIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(fileId)) next.delete(fileId)
+      else next.add(fileId)
+      return next
+    })
   }
 
   const handleStartEdit = () => {
@@ -308,12 +296,15 @@ export default function DoctorToDoctorSharePage() {
   const handleCancelEdit = () => {
     if (document) loadValuesFromDocument(document)
     setDirtyKeys(new Set())
+    setPendingFiles([])
+    setRemovedFileIds(new Set())
     setEditing(false)
   }
 
   const handleSave = async () => {
     if (!document || !accessToken || !token) return
-    if (dirtyKeys.size === 0) {
+    const fileChanges = pendingFiles.length > 0 || removedFileIds.size > 0
+    if (dirtyKeys.size === 0 && !fileChanges) {
       // Nothing this doctor actually touched -- just close edit mode rather
       // than sending an empty no-op PATCH.
       setEditing(false)
@@ -321,6 +312,7 @@ export default function DoctorToDoctorSharePage() {
     }
     setSaving(true)
     try {
+      if (dirtyKeys.size > 0) {
       const customFields: Record<string, unknown> = {}
       const payload: Record<string, unknown> = {}
       let touchedCustom = false
@@ -348,6 +340,26 @@ export default function DoctorToDoctorSharePage() {
       setDocument(updated)
       loadValuesFromDocument(updated)
       setDirtyKeys(new Set())
+      }
+
+      // Then the held file changes; each is dropped from the pending lists as
+      // it lands, so a failure leaves only the rest pending for a retry.
+      if (fileChanges) {
+        setUploading(true)
+        try {
+          for (const fileId of removedFileIds) {
+            await deleteDoctorToDoctorFile(accessToken, token, fileId)
+            setRemovedFileIds((prev) => { const next = new Set(prev); next.delete(fileId); return next })
+          }
+          for (const file of pendingFiles) {
+            await uploadDoctorToDoctorFile(accessToken, token, file)
+            setPendingFiles((prev) => prev.filter((f) => f !== file))
+          }
+        } finally {
+          setUploading(false)
+          refreshDocument()
+        }
+      }
       setEditing(false)
       Swal.fire({ icon: "success", title: "Saved", timer: 1000, showConfirmButton: false })
     } catch (error) {
@@ -635,11 +647,11 @@ export default function DoctorToDoctorSharePage() {
 
         <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold text-gray-900">Attached Files ({document.files?.length || 0})</h2>
+            <h2 className="text-base font-semibold text-gray-900">Attached Files ({(document.files?.length || 0) - removedFileIds.size + pendingFiles.length})</h2>
             {editing && (
               <>
-                <input ref={fileInputRef} type="file" accept="*/*" multiple className="hidden" onChange={(e) => { const files = Array.from(e.target.files || []); if (files.length) void handleFileUpload(files); e.target.value = "" }} />
-                <button onClick={() => fileInputRef.current?.click()} disabled={uploading} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-60">
+                <input ref={fileInputRef} type="file" accept="*/*" multiple className="hidden" onChange={(e) => { const files = Array.from(e.target.files || []); if (files.length) setPendingFiles((prev) => [...prev, ...files]); e.target.value = "" }} />
+                <button onClick={() => fileInputRef.current?.click()} disabled={saving} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-60">
                   {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
                   {uploading ? "Uploading…" : "Add Files"}
                 </button>
@@ -647,14 +659,14 @@ export default function DoctorToDoctorSharePage() {
             )}
           </div>
 
-          {!document.files || document.files.length === 0 ? (
+          {(!document.files || document.files.length === 0) && pendingFiles.length === 0 ? (
             <div className="text-center py-8">
               <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
               <p className="text-sm text-gray-500">No files have been attached yet.</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {document.files.map((file) => (
+              {(document.files || []).map((file) => (
                 <div key={file.id} className="flex items-center gap-4 rounded-xl border border-gray-200 px-4 py-3 hover:bg-gray-50 transition-colors">
                   <div className="shrink-0">
                     {isImageFile(file) ? (
@@ -673,7 +685,7 @@ export default function DoctorToDoctorSharePage() {
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{file.file_name}</p>
+                    <p className={`text-sm font-medium truncate ${removedFileIds.has(file.id) ? "text-gray-400 line-through" : "text-gray-900"}`}>{file.file_name}</p>
                     <p className="text-xs text-gray-500 mt-1">
                       {formatFileSize(file.file_size)} · Added {formatDate(file.created_at)}
                     </p>
@@ -694,10 +706,28 @@ export default function DoctorToDoctorSharePage() {
                     </div>
                   )}
                   {editing && userId && file.uploaded_by === userId && (
-                    <button onClick={() => void handleDeleteFile(file.id)} title="Remove file" className="p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 shrink-0">
-                      <X className="w-4 h-4" />
-                    </button>
+                    removedFileIds.has(file.id) ? (
+                      <button onClick={() => toggleRemoveFile(file.id)} disabled={saving} title="Keep this file" className="px-2 py-1 rounded-lg text-xs font-medium text-blue-600 hover:bg-blue-50 shrink-0">
+                        Undo remove
+                      </button>
+                    ) : (
+                      <button onClick={() => toggleRemoveFile(file.id)} disabled={saving} title="Remove file (on save)" className="p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 shrink-0">
+                        <X className="w-4 h-4" />
+                      </button>
+                    )
                   )}
+                </div>
+              ))}
+              {pendingFiles.map((file, i) => (
+                <div key={`pending-${i}-${file.name}`} className="flex items-center gap-4 rounded-xl border border-dashed border-blue-200 bg-blue-50/50 px-4 py-3">
+                  <FileText className="w-6 h-6 text-blue-500 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{file.name}</p>
+                    <p className="text-xs text-blue-600 mt-1">{uploading ? "Uploading…" : "Pending — added when you save"}</p>
+                  </div>
+                  <button onClick={() => setPendingFiles((prev) => prev.filter((f) => f !== file))} disabled={saving} title="Don't add this file" className="p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 shrink-0">
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
               ))}
             </div>

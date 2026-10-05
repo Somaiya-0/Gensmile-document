@@ -105,30 +105,45 @@ export default function PatientFillFormPage() {
     setValues((prev) => ({ ...prev, [key]: value }))
   }
 
-  const handleFileSelect = async (selected: FileList | null) => {
+  // Picked files and removals are held until the patient submits (or saves
+  // their edit) -- nothing is uploaded or deleted before that.
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const [removedFileIds, setRemovedFileIds] = useState<Set<string>>(new Set())
+
+  const handleFileSelect = (selected: FileList | null) => {
     const fileArray = Array.from(selected ?? [])
     if (fileArray.length === 0) return
     setUploadError(null)
-    setUploading(true)
-    try {
-      for (const file of fileArray) {
-        const uploaded = await uploadPatientFillFile(fillToken, file)
-        setFiles((prev) => [...prev.filter((f) => f.id !== uploaded.id), uploaded])
-      }
-    } catch (error: unknown) {
-      const err = error as { message?: string }
-      setUploadError(err.message || "Failed to upload file.")
-    } finally {
-      setUploading(false)
-    }
+    setPendingFiles((prev) => [...prev, ...fileArray])
   }
 
-  const handleRemoveFile = async (fileId: string) => {
+  const toggleRemoveFile = (fileId: string) => {
+    setRemovedFileIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(fileId)) next.delete(fileId)
+      else next.add(fileId)
+      return next
+    })
+  }
+
+  // Applies the held file changes; each is dropped from the pending lists as
+  // it lands, so a failure leaves only the rest for the next try.
+  const applyFileChanges = async () => {
+    if (pendingFiles.length === 0 && removedFileIds.size === 0) return
+    setUploading(true)
     try {
-      await deletePatientFillFile(fillToken, fileId)
-      setFiles((prev) => prev.filter((f) => f.id !== fileId))
-    } catch {
-      // leave the file in the list -- the delete just didn't take
+      for (const fileId of removedFileIds) {
+        await deletePatientFillFile(fillToken, fileId)
+        setFiles((prev) => prev.filter((f) => f.id !== fileId))
+        setRemovedFileIds((prev) => { const next = new Set(prev); next.delete(fileId); return next })
+      }
+      for (const file of pendingFiles) {
+        const uploaded = await uploadPatientFillFile(fillToken, file)
+        setFiles((prev) => [...prev.filter((f) => f.id !== uploaded.id), uploaded])
+        setPendingFiles((prev) => prev.filter((f) => f !== file))
+      }
+    } finally {
+      setUploading(false)
     }
   }
 
@@ -155,7 +170,15 @@ export default function PatientFillFormPage() {
     e.preventDefault()
     setSubmitting(true)
     setLoadError(null)
+    setUploadError(null)
     try {
+      try {
+        await applyFileChanges()
+      } catch (error: unknown) {
+        const err = error as { message?: string }
+        setUploadError(err.message || "Failed to upload file.")
+        throw new Error("A file couldn't be uploaded -- please try again.")
+      }
       const data = await submitPatientFillForm(fillToken, {
         patient_name: contact.patient_name,
         patient_email: contact.patient_email,
@@ -442,27 +465,46 @@ export default function PatientFillFormPage() {
             ))}
 
             <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-3">
-              <h2 className="text-sm font-semibold text-gray-900">Documents ({files.length})</h2>
+              <h2 className="text-sm font-semibold text-gray-900">Documents ({files.length - removedFileIds.size + pendingFiles.length})</h2>
               <p className="text-xs text-gray-500 -mt-2">
                 Upload any relevant files (ID, insurance card, photos, etc.). Any file format works except zip.
               </p>
-              {files.length > 0 && (
+              {(files.length > 0 || pendingFiles.length > 0) && (
                 <div className="space-y-1.5">
-                  {files.map((file) => (
+                  {files.map((file) => {
+                    const removing = removedFileIds.has(file.id)
+                    return (
                     <div key={file.id} className="flex items-center gap-2 rounded-lg border border-gray-100 px-3 py-2">
                       <FileText className="w-4 h-4 text-gray-400 shrink-0" />
-                      <span className="text-xs text-gray-700 truncate flex-1">{file.file_name}</span>
-                      <span className="text-[10px] text-gray-400 shrink-0">{(file.file_size / 1024).toFixed(1)} KB</span>
+                      <span className={`text-xs truncate flex-1 ${removing ? "text-gray-400 line-through" : "text-gray-700"}`}>{file.file_name}</span>
+                      <span className="text-[10px] text-gray-400 shrink-0">{removing ? "Removed when you submit" : `${(file.file_size / 1024).toFixed(1)} KB`}</span>
                       {/* Patients can only remove their own uploads, not the doctor's. */}
                       {file.uploaded_by_patient && (
                         <button
                           type="button"
-                          onClick={() => handleRemoveFile(file.id)}
+                          onClick={() => toggleRemoveFile(file.id)}
+                          title={removing ? "Keep this file" : "Remove file"}
                           className="p-0.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-600 shrink-0"
                         >
-                          <X className="w-3.5 h-3.5" />
+                          {removing ? <span className="text-[10px] font-medium text-blue-600">Undo</span> : <X className="w-3.5 h-3.5" />}
                         </button>
                       )}
+                    </div>
+                    )
+                  })}
+                  {pendingFiles.map((file, i) => (
+                    <div key={`pending-${i}-${file.name}`} className="flex items-center gap-2 rounded-lg border border-dashed border-blue-200 bg-blue-50/50 px-3 py-2">
+                      <FileText className="w-4 h-4 text-blue-500 shrink-0" />
+                      <span className="text-xs text-gray-700 truncate flex-1">{file.name}</span>
+                      <span className="text-[10px] font-medium text-blue-600 shrink-0">{uploading ? "Uploading…" : "Added when you submit"}</span>
+                      <button
+                        type="button"
+                        onClick={() => setPendingFiles((prev) => prev.filter((f) => f !== file))}
+                        title="Don't add this file"
+                        className="p-0.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-600 shrink-0"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -479,11 +521,11 @@ export default function PatientFillFormPage() {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
+                disabled={submitting}
                 className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2.5 border border-dashed border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-60"
               >
-                {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                {uploading ? "Uploading…" : "Upload Documents"}
+                <Upload className="w-3.5 h-3.5" />
+                Upload Documents
               </button>
             </div>
 
@@ -497,7 +539,7 @@ export default function PatientFillFormPage() {
               {submitting ? (
                 <span className="flex items-center justify-center gap-2">
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Submitting...
+                  {uploading ? "Uploading files..." : "Submitting..."}
                 </span>
               ) : (
                 submitted ? "Save Changes" : "Submit"
