@@ -104,17 +104,20 @@ const FIELD_TYPE_LABELS: Record<FieldConfig["type"], string> = {
 // section it lands in, before the doctor commits to adding it.
 // Asked before closing a form that has unsaved input or a file still uploading.
 // Closing doesn't cancel an upload -- it finishes in the background.
+// Two cases: a save still uploading (confirm = close and let it finish in the
+// background), or plain unsaved edits (confirm = throw the edits away -- the
+// form itself stays open, back on the saved version).
 async function confirmDiscard({ uploading = false, unsaved = true } = {}): Promise<boolean> {
   const r = await Swal.fire({
     icon: "warning",
-    title: "Do you want to close?",
+    title: uploading ? "Do you want to close?" : "Discard your changes?",
     text: [
       uploading && "A file is still uploading.",
       unsaved && "Your unsaved changes will be lost.",
     ].filter(Boolean).join(" "),
     showCancelButton: true,
-    confirmButtonText: uploading ? "Continue upload in background" : "Discard",
-    cancelButtonText: "Keep open",
+    confirmButtonText: uploading ? "Continue upload in background" : "Discard changes",
+    cancelButtonText: uploading ? "Keep open" : "Keep editing",
     // Red only when closing actually throws something away.
     confirmButtonColor: unsaved ? "#dc2626" : "#2563eb",
   })
@@ -810,7 +813,15 @@ function DocumentDetailModal({
 
   const requestClose = async () => {
     const unsaved = editing && (dirtyKeys.size > 0 || fileChanges)
-    if ((uploading || unsaved) && !(await confirmDiscard({ uploading, unsaved }))) return
+    if (uploading) {
+      if (await confirmDiscard({ uploading, unsaved })) onClose()
+      return
+    }
+    // Discard keeps the form open, just drops the edits.
+    if (unsaved) {
+      if (await confirmDiscard()) discardEdits()
+      return
+    }
     onClose()
   }
 
@@ -1894,9 +1905,12 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
       setFormData({ visit_date: todayISO() }); setCustomFields({})
       setLogoFile(null); setLogoPreview(null); setAttachments([])
     } else if (createFormDirty) {
-      if (!(await confirmDiscard())) return
-      setFormData({ visit_date: todayISO() }); setCustomFields({})
-      setLogoFile(null); setLogoPreview(null); setAttachments([])
+      // Discard empties the form but leaves it open for a fresh start.
+      if (await confirmDiscard()) {
+        setFormData({ visit_date: todayISO() }); setCustomFields({})
+        setLogoFile(null); setLogoPreview(null); setAttachments([])
+      }
+      return
     }
     setShowCreateModal(false)
   }
