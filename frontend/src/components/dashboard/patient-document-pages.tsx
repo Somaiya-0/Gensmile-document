@@ -640,7 +640,9 @@ function DocumentDetailModal({
   // aren't uploaded and removed files aren't deleted until the doctor saves.
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [removedFileIds, setRemovedFileIds] = useState<Set<string>>(new Set())
-  const fileChanges = pendingFiles.length > 0 || removedFileIds.size > 0
+  // A new logo waits for Save too; until then only its preview is shown.
+  const [pendingLogo, setPendingLogo] = useState<{ file: File; preview: string } | null>(null)
+  const fileChanges = pendingFiles.length > 0 || removedFileIds.size > 0 || pendingLogo !== null
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [sharing, setSharing] = useState<"patient" | "doctor" | null>(null)
@@ -703,6 +705,12 @@ function DocumentDetailModal({
       if (fileChanges) {
         setUploading(true)
         try {
+          if (pendingLogo) {
+            const result = await uploadPatientDocumentLogo(token, document.id, pendingLogo.file)
+            current = { ...current, logo_url: result.logo_url }
+            clearPendingLogo()
+            onUpdate(current)
+          }
           for (const fileId of removedFileIds) {
             await deletePatientDocumentFile(token, fileId)
             current = { ...current, files: current.files.filter((f) => f.id !== fileId) }
@@ -732,19 +740,27 @@ function DocumentDetailModal({
     setDirtyKeys(new Set())
     setPendingFiles([])
     setRemovedFileIds(new Set())
+    clearPendingLogo()
     setEditing(false)
   }
 
-  const handleLogoUpload = async (file: File) => {
-    setUploading(true)
-    try {
-      const result = await uploadPatientDocumentLogo(token, document.id, file)
-      onUpdate({ ...document, logo_url: result.logo_url })
-    } catch (error) {
-      Swal.fire({ icon: "error", title: "Upload failed", text: errMsg(error) })
-    } finally {
-      setUploading(false)
+  const stageLogo = (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      Swal.fire({ icon: "warning", title: "Invalid file", text: "Logo must be an image file." })
+      return
     }
+    setEditing(true)
+    setPendingLogo((prev) => {
+      if (prev) URL.revokeObjectURL(prev.preview)
+      return { file, preview: URL.createObjectURL(file) }
+    })
+  }
+
+  const clearPendingLogo = () => {
+    setPendingLogo((prev) => {
+      if (prev) URL.revokeObjectURL(prev.preview)
+      return null
+    })
   }
 
   // Picking or removing a file only stages it (and switches to edit mode, so
@@ -879,15 +895,16 @@ function DocumentDetailModal({
         <div className="shrink-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="relative group">
-              {document.logo_url ? (
-                <img src={document.logo_url} alt="Logo" className="w-12 h-12 rounded-lg object-cover border border-gray-200" />
+              {pendingLogo || document.logo_url ? (
+                <img src={pendingLogo?.preview ?? document.logo_url ?? undefined} alt="Logo" title={pendingLogo ? "New logo -- saved when you click Save" : undefined} className={`w-12 h-12 rounded-lg object-cover border ${pendingLogo ? "border-blue-400 ring-2 ring-blue-200" : "border-gray-200"}`} />
               ) : (
                 <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center border-2 border-dashed border-gray-300">
                   <FileText className="w-5 h-5 text-gray-400" />
                 </div>
               )}
-              <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) handleLogoUpload(file); e.target.value = "" }} />
-              <button onClick={() => logoInputRef.current?.click()} className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-lg text-white text-[9px] font-medium opacity-0 group-hover:opacity-100 transition-opacity">Change</button>
+              <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) stageLogo(file); e.target.value = "" }} />
+              <button onClick={() => logoInputRef.current?.click()} disabled={saving} className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-lg text-white text-[9px] font-medium opacity-0 group-hover:opacity-100 transition-opacity">Change</button>
+              {pendingLogo && <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 rounded bg-blue-600 px-1 text-[8px] font-semibold uppercase text-white">new</span>}
             </div>
             <div>
               <h2 className="text-lg font-semibold text-gray-900">{document.patient_name}</h2>
