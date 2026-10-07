@@ -1272,6 +1272,10 @@ function ShareToDoctorPanel({
     setCreatingPatient(true)
     try {
       const newDoc = await createPatientDocument(token, { patient_name: newPatientName.trim() })
+      // Created from Doctor to Doctor: list it there too (Doctor to Patient
+      // is on by default). From Doctor to Patient it stays patient-only until
+      // a doctor link is generated.
+      if (context === "doctor-to-doctor") await toggleDocumentSharing(token, newDoc.id, true)
       onRefresh?.()
       setShowNewPatientModal(false)
       setNewPatientName("")
@@ -1882,7 +1886,11 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
     setSaving(true)
     try {
       const payload = { ...formData, custom_fields: customFields } as PatientDocumentCreate
-      const newDoc = await createPatientDocument(token, payload)
+      const created = await createPatientDocument(token, payload)
+      // Created from Doctor to Doctor: list it there too (Doctor to Patient
+      // is on by default). From Doctor to Patient it stays patient-only until
+      // a doctor link is generated.
+      const newDoc = mode === "doctor-to-doctor" ? await toggleDocumentSharing(token, created.id, true) : created
       // List it right away; its files show a progress bar while they upload.
       const total = (logo ? 1 : 0) + files.length
       let done = 0
