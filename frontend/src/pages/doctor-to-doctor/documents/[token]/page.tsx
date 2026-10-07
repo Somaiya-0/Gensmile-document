@@ -23,7 +23,7 @@ import {
 } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import {
-  downloadDoctorToDoctorZip, getDoctorToDoctorDocument, updateDoctorToDoctorDocument,
+  downloadDoctorToDoctorZip, getDoctorToDoctorDocument, updateDoctorToDoctorDocument, updateDoctorToDoctorFormConfig,
   uploadDoctorToDoctorFile, deleteDoctorToDoctorFile,
 } from "@/lib/api-client"
 import { FormSettingsModal } from "@/components/dashboard/patient-document-pages"
@@ -194,6 +194,9 @@ export default function DoctorToDoctorSharePage() {
   // hasn't touched without disturbing what they're mid-typing.
   const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(new Set())
   const [showFormSettings, setShowFormSettings] = useState(false)
+  // "Just for now" layout from Edit Form: shown on this page until it's
+  // closed, never saved. "Save to this form" saves it to this document only.
+  const [formOverride, setFormOverride] = useState<FieldConfig[] | null>(null)
   const [showHistory, setShowHistory] = useState(false)
 
   // Not signed in -- send them to sign in first, then straight back here.
@@ -328,7 +331,7 @@ export default function DoctorToDoctorSharePage() {
         payload[key] = key === "patient_name" ? sent[key] : sent[key] || null
         continue
       }
-      const field = document.fields.find((f) => f.key === key)
+      const field = (formOverride ?? document.fields).find((f) => f.key === key)
       if (!field) continue
       if (field.core) {
         payload[key] = sent[key]
@@ -459,9 +462,10 @@ export default function DoctorToDoctorSharePage() {
     return (v as string) || "—"
   }
 
+  const shownFields = formOverride ? formOverride.filter((f) => f.active) : document.fields || []
   const printSections: [string, FieldConfig[]][] = (() => {
     const sections: Record<string, FieldConfig[]> = {}
-    for (const field of document.fields || []) {
+    for (const field of shownFields) {
       const section = field.section || "Details"
       if (!sections[section]) sections[section] = []
       sections[section].push(field)
@@ -472,7 +476,7 @@ export default function DoctorToDoctorSharePage() {
   })()
 
   const groupedFields: Record<string, FieldConfig[]> = {}
-  for (const field of document.fields || []) {
+  for (const field of shownFields) {
     const section = field.section || "Details"
     if (!groupedFields[section]) groupedFields[section] = []
     groupedFields[section].push(field)
@@ -789,7 +793,15 @@ export default function DoctorToDoctorSharePage() {
         onClose={() => setShowFormSettings(false)}
         documentId={null}
         shareToken={token}
-        onSaved={refreshDocument}
+        initialFields={formOverride ?? undefined}
+        onApply={async (fields, permanent) => {
+          if (!permanent) { setFormOverride(fields); return }
+          if (!accessToken) return
+          // This document's own layout only -- never the owner's default form.
+          await updateDoctorToDoctorFormConfig(accessToken, token, { fields })
+          setFormOverride(null)
+          refreshDocument()
+        }}
       />
     </div>
   )

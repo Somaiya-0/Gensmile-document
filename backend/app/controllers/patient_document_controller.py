@@ -1,3 +1,4 @@
+import copy
 import logging
 import secrets
 import io
@@ -376,7 +377,8 @@ async def create_patient_document(
         doctor_profile_id=profile.id,
         share_token=_new_token(),
         fill_token=_new_token(),
-        form_config=custom_form_config or default_fields,  # One-off layout, else copy default
+        # Its own copy, so editing this form can never change the default or other forms.
+        form_config=copy.deepcopy(custom_form_config or default_fields),
         **data,
     )
     db.add(doc)
