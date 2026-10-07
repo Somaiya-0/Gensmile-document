@@ -334,6 +334,11 @@ export default function PatientFillFormPage() {
             <p className="text-sm text-gray-600">{form.doctor_name ? `Dr. ${form.doctor_name}` : "Your Doctor"}</p>
           </div>
           <div className="shrink-0 flex items-center gap-2">
+            {locked && (
+              <button type="button" onClick={() => setEditingAfterSubmit(true)} title="Edit your answers" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-sm font-medium text-white hover:bg-blue-700">
+                <Pencil className="w-4 h-4" /> Edit
+              </button>
+            )}
             <button
               type="button"
               onClick={handleDownloadZip}
@@ -354,15 +359,6 @@ export default function PatientFillFormPage() {
           </div>
         </div>
 
-        {locked && (
-          <div className="mb-5 flex items-center gap-3 rounded-2xl border border-green-200 bg-green-50 p-4">
-            <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />
-            <p className="flex-1 text-sm text-green-800">Submitted to {form.doctor_name ? `Dr. ${form.doctor_name}` : "your doctor"}.</p>
-            <button type="button" onClick={() => setEditingAfterSubmit(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-xs font-medium text-white hover:bg-blue-700">
-              <Pencil className="w-3.5 h-3.5" /> Edit
-            </button>
-          </div>
-        )}
           <form onSubmit={handleSubmit}>
           {/* Native disabled fieldset locks every input, tick box and upload button at once. */}
           <fieldset disabled={locked} className="space-y-5 min-w-0">
