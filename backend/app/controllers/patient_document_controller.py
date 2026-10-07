@@ -63,14 +63,15 @@ async def _require_doctor(db: AsyncSession, user: UserAccount) -> DoctorProfile:
     return profile
 
 
-def _doctor_display_name(doc: PatientDocument) -> str:
-    profile = doc.doctor_profile
-    return (
-        getattr(profile, "full_name", None)
-        or getattr(profile, "display_name", None)
-        or getattr(profile, "name", None)
-        or "Your Doctor"
+async def _doctor_display_name(db: AsyncSession, doc: PatientDocument) -> str:
+    # The name lives on the doctor's UserAccount, not DoctorProfile. Empty
+    # string lets the frontend show its own "Your Doctor" fallback.
+    name = await db.scalar(
+        select(UserAccount.full_name)
+        .join(DoctorProfile, DoctorProfile.user_id == UserAccount.id)
+        .where(DoctorProfile.id == doc.doctor_profile_id)
     )
+    return name or ""
 
 
 def _file_read(f: PatientDocumentFile) -> PatientDocumentFileRead:
@@ -1028,7 +1029,7 @@ async def get_patient_document_public_doctor(
         patient_name=doc.patient_name,
         patient_email=doc.patient_email,
         patient_phone=doc.patient_phone,
-        doctor_name=_doctor_display_name(doc),
+        doctor_name=await _doctor_display_name(db, doc),
         logo_url=s3_service.get_presigned_url(doc.logo_key),
         visit_date=doc.visit_date,
         shared_at=doc.updated_at,
@@ -1090,7 +1091,7 @@ async def get_patient_fill_document(
         patient_name=doc.patient_name,
         patient_email=doc.patient_email,  # ADD THIS
         patient_phone=doc.patient_phone,  # ADD THIS
-        doctor_name=_doctor_display_name(doc),
+        doctor_name=await _doctor_display_name(db, doc),
         logo_url=s3_service.get_presigned_url(doc.logo_key),
         fields=editable_fields,
         values=values,
