@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { useParams } from "react-router-dom"
 import Swal from "sweetalert2"
-import { CheckCircle2, Download, Pencil, FileText, Loader2, AlertCircle, Printer, Upload, X } from "lucide-react"
+import { Download, Pencil, FileText, Loader2, AlertCircle, Printer, Upload, X } from "lucide-react"
 import { deletePatientFillFile, downloadPatientFillZip, getPatientFillForm, submitPatientFillForm, uploadPatientFillFile } from "@/lib/api-client"
 import { usePublicDocumentLiveUpdates } from "@/hooks/use-public-document-live-updates"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
