@@ -19,7 +19,9 @@ import {
   LogOut,
   Upload,
   X,
+  MoreVertical,
 } from "lucide-react"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import {
   downloadDoctorToDoctorZip, getDoctorToDoctorDocument, updateDoctorToDoctorDocument,
   uploadDoctorToDoctorFile, deleteDoctorToDoctorFile,
@@ -586,39 +588,27 @@ export default function DoctorToDoctorSharePage() {
               </div>
             </div>
             <div className="shrink-0 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowHistory(true)}
-                title="View change history"
-                className="p-2.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50"
-              >
-                <History className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowFormSettings(true)}
-                title="Edit form settings"
-                className="p-2.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50"
-              >
-                <Settings className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={handleDownloadZip}
-                disabled={downloading}
-                title="Download form PDF + attached files (zip)"
-                className="p-2.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-60"
-              >
-                {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              </button>
-              <button
-                type="button"
-                onClick={() => window.print()}
-                title="Print this form"
-                className="p-2.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50"
-              >
-                <Printer className="w-4 h-4" />
-              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" title="More options" className="p-2.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50">
+                    {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MoreVertical className="w-4 h-4" />}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-[200px] rounded-xl border-gray-200 p-1.5">
+                  <DropdownMenuItem onClick={() => setShowHistory(true)} className="cursor-pointer gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-900">
+                    <History className="w-4 h-4 text-blue-600" /> Change History
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowFormSettings(true)} className="cursor-pointer gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-900">
+                    <Settings className="w-4 h-4 text-blue-600" /> Edit Form
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => void handleDownloadZip()} disabled={downloading} className="cursor-pointer gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-900">
+                    <Download className="w-4 h-4 text-blue-600" /> Download ZIP
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => window.print()} className="cursor-pointer gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-900">
+                    <Printer className="w-4 h-4 text-blue-600" /> Print
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               {!editing && (
                 <button
                   type="button"
