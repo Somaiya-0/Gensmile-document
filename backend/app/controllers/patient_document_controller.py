@@ -310,6 +310,7 @@ async def create_patient_document(
         default_fields = None
 
     data = payload.model_dump()
+    custom_form_config = data.pop("form_config", None)
 
     if data["patient_user_id"] is not None:
         dp = await db.scalar(
@@ -375,7 +376,7 @@ async def create_patient_document(
         doctor_profile_id=profile.id,
         share_token=_new_token(),
         fill_token=_new_token(),
-        form_config=default_fields,  # Copy default config
+        form_config=custom_form_config or default_fields,  # One-off layout, else copy default
         **data,
     )
     db.add(doc)

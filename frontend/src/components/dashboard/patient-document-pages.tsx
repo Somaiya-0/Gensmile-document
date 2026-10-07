@@ -343,7 +343,7 @@ async function downloadAllAsZip(documentId: string, token: string, _files: Patie
 // ─── Form Settings Modal (per-document or doctor default) ─────────────────
 
 export function FormSettingsModal({
-  isOpen, onClose, documentId, onSaved, isDefault = false, shareToken = null,
+  isOpen, onClose, documentId, onSaved, isDefault = false, shareToken = null, draftFields, onDraftDone, onDefaultChanged,
 }: {
   isOpen: boolean
   onClose: () => void
@@ -356,6 +356,13 @@ export function FormSettingsModal({
   // and never touch the owner's doctor-wide default template -- a visiting
   // doctor has no default template of their own to update.
   shareToken?: string | null
+  // New Document form: edit a local draft instead of saving anywhere; the
+  // result goes back through onDraftDone when the modal closes, and only
+  // that one new document uses it.
+  draftFields?: FieldConfig[]
+  onDraftDone?: (fields: FieldConfig[]) => void
+  // The doctor chose "Make permanent" on close -- the default form changed.
+  onDefaultChanged?: () => void
 }) {
   const token = useToken()
   const [fields, setFields] = useState<FieldConfig[]>([])
@@ -363,20 +370,28 @@ export function FormSettingsModal({
   const [saving, setSaving] = useState(false)
   const [expandedSection, setExpandedSection] = useState<string | null>(null)
   const [showAddField, setShowAddField] = useState(false)
+  const draft = draftFields !== undefined
+  const fieldsRef = useRef(fields)
+  fieldsRef.current = fields
+  // Set by any change this session; on close the doctor is asked whether to
+  // make the changes permanent (copy them to the default form) or keep them
+  // on this form only. The default form itself is never asked about.
+  const changedRef = useRef(false)
 
   const fetchFields = useCallback(async () => {
+    if (draft) return fieldsRef.current
     const data = shareToken
       ? await getDoctorToDoctorFormConfig(token, shareToken)
       : isDefault
         ? await getFormConfig(token)
         : await getDocumentFormConfig(token, documentId as string)
     return [...data.fields].sort((a, b) => a.order - b.order)
-  }, [documentId, isDefault, shareToken, token])
+  }, [documentId, isDefault, shareToken, token, draft])
 
   const loadFields = useCallback(async () => {
     setLoading(true)
     try {
-      const sorted = await fetchFields()
+      const sorted = draft ? [...(draftFields ?? [])].sort((a, b) => a.order - b.order) : await fetchFields()
       setFields(sorted)
       if (sorted.length > 0) setExpandedSection(sorted[0].section || "Overview")
     } catch (error) {
@@ -384,11 +399,41 @@ export function FormSettingsModal({
     } finally {
       setLoading(false)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchFields])
 
   useEffect(() => {
-    if (isOpen) loadFields()
+    if (!isOpen) return
+    changedRef.current = false
+    loadFields()
   }, [isOpen, loadFields])
+
+  const handleClose = async () => {
+    if (!isDefault && !shareToken && changedRef.current) {
+      changedRef.current = false
+      const choice = await Swal.fire({
+        icon: "question",
+        title: "Keep these form changes?",
+        text: "Make them permanent for every new document, or use them on this form only.",
+        showDenyButton: true,
+        confirmButtonText: "Make permanent",
+        denyButtonText: "This form only",
+        denyButtonColor: "#6b7280",
+        allowOutsideClick: false,
+      })
+      if (choice.isConfirmed) {
+        try {
+          await updateFormConfig(token, { fields: fieldsRef.current })
+          onDefaultChanged?.()
+        } catch (error) {
+          await Swal.fire({ icon: "error", title: "Couldn't update the default form", text: errMsg(error) })
+        }
+      } else if (draft) {
+        onDraftDone?.(fieldsRef.current)
+      }
+    }
+    onClose()
+  }
 
   // Every mutation below saves immediately -- there's no separate "Save
   // Changes" step, and each one re-fetches the current field list right
@@ -409,15 +454,18 @@ export function FormSettingsModal({
       const fresh = await fetchFields()
       const ordered = mutate(fresh).map((f, i) => ({ ...f, order: i + 1 }))
       setFields(ordered)
-      if (shareToken) {
+      fieldsRef.current = ordered
+      changedRef.current = true
+      if (draft) {
+        // Local only -- handed back on close.
+      } else if (shareToken) {
         await updateDoctorToDoctorFormConfig(token, shareToken, { fields: ordered })
       } else if (isDefault) {
         await updateFormConfig(token, { fields: ordered })
       } else {
+        // This document only; the default changes only if the doctor
+        // picks "Make permanent" on close.
         await updateDocumentFormConfig(token, documentId as string, { fields: ordered })
-        // Also update the doctor's default template so new (blank) patient
-        // documents pick up the same field structure going forward.
-        await updateFormConfig(token, { fields: ordered })
       }
       onSaved?.()
     } catch (error) {
@@ -492,14 +540,14 @@ export function FormSettingsModal({
     <ModalExit show={isOpen}>{isOpen && (
     <>
     <div className="modal-in fixed inset-0 z-[65] flex items-center justify-center bg-black/50 p-4">
-      <div className="absolute inset-0" onClick={onClose} />
+      <div className="absolute inset-0" onClick={() => void handleClose()} />
       <div className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90dvh] overflow-hidden flex flex-col">
         <div className="shrink-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
           <div>
-            <h3 className="text-base font-semibold text-gray-900">{isDefault ? "Form Settings" : "Edit Form"}</h3>
+            <h3 className="text-base font-semibold text-gray-900">{isDefault || draft ? "Form Settings" : "Edit Form"}</h3>
             <p className="text-xs text-gray-500">Customize what fields appear on your form</p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100"><X className="w-4 h-4" /></button>
+          <button onClick={() => void handleClose()} className="p-2 rounded-lg hover:bg-gray-100"><X className="w-4 h-4" /></button>
         </div>
         <div className="overflow-y-auto overscroll-none px-6 py-4 space-y-4">
           {loading ? (
@@ -1143,8 +1191,8 @@ function DocumentDetailModal({
           // added/edited field never showed up here until the modal was
           // closed and reopened. Refetch the real thing instead.
           if (document?.id) onUpdate(await getPatientDocument(token, document.id))
-          onDefaultFormConfigChanged?.()
         }}
+        onDefaultChanged={onDefaultFormConfigChanged}
       />
     </div>
   )
@@ -1792,6 +1840,9 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
   const [saving, setSaving] = useState(false)
   const createRunRef = useRef(0)
   const [formFields, setFormFields] = useState<FieldConfig[]>([])
+  // Form Settings changes made from the New Document form that weren't made
+  // permanent: used for that one new document, then back to the default.
+  const [draftFormFields, setDraftFormFields] = useState<FieldConfig[] | null>(null)
   const [formData, setFormData] = useState<Record<string, unknown>>({ visit_date: todayISO() })
   const [customFields, setCustomFields] = useState<Record<string, unknown>>({})
   const [showDefaultFormSettings, setShowDefaultFormSettings] = useState(false)
@@ -1885,7 +1936,7 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
     const logo = logoFile, files = attachments
     setSaving(true)
     try {
-      const payload = { ...formData, custom_fields: customFields } as PatientDocumentCreate
+      const payload = { ...formData, custom_fields: customFields, ...(draftFormFields ? { form_config: draftFormFields } : {}) } as PatientDocumentCreate
       const created = await createPatientDocument(token, payload)
       // Created from Doctor to Doctor: list it there too (Doctor to Patient
       // is on by default). From Doctor to Patient it stays patient-only until
@@ -1927,7 +1978,7 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
         void Swal.fire({ toast: true, position: "top-end", icon: "success", title: `Document for ${patientName} is ready`, text: "Files finished uploading.", timer: 4000, showConfirmButton: false })
         return
       }
-      setFormData({ visit_date: todayISO() }); setCustomFields({})
+      setFormData({ visit_date: todayISO() }); setCustomFields({}); setDraftFormFields(null)
       setLogoFile(null); setLogoPreview(null); setAttachments([])
 
       // Show the just-created document so the doctor can see it as it'll
@@ -2000,12 +2051,12 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
       if (!(await confirmDiscard({ uploading: true, unsaved: false }))) return
       createRunRef.current++
       setSaving(false); setUploadingLogo(false); setUploadingFiles(false)
-      setFormData({ visit_date: todayISO() }); setCustomFields({})
+      setFormData({ visit_date: todayISO() }); setCustomFields({}); setDraftFormFields(null)
       setLogoFile(null); setLogoPreview(null); setAttachments([])
     } else if (createFormDirty) {
       // Discard empties the form but leaves it open for a fresh start.
       if (await confirmDiscard()) {
-        setFormData({ visit_date: todayISO() }); setCustomFields({})
+        setFormData({ visit_date: todayISO() }); setCustomFields({}); setDraftFormFields(null)
         setLogoFile(null); setLogoPreview(null); setAttachments([])
       }
       return
@@ -2026,7 +2077,7 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
     mode === "doctor-to-doctor" ? "No documents shared with other doctors yet"
     : mode === "doctor-to-patient" ? "No documents sent to patients yet"
     : "No documents yet"
-  const activeFormFields = formFields.filter((f) => f.active)
+  const activeFormFields = (draftFormFields ?? formFields).filter((f) => f.active)
   const groupedFields = activeFormFields.reduce<Record<string, FieldConfig[]>>((acc, f) => {
     const section = f.section || "Overview"
     if (!acc[section]) acc[section] = []
@@ -2133,7 +2184,7 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
         <ModalExit show={!!(showDetailModal && selectedDoc)}>{showDetailModal && selectedDoc && (
           <DocumentDetailModal document={selectedDoc} startInEditMode={detailModalStartEditing} onClose={() => setShowDetailModal(false)} onUpdate={handleUpdateDocument} onDelete={handleDeleteDocument} onDefaultFormConfigChanged={loadFormConfig} upload={uploads[selectedDoc.id]} onUploadProgress={trackUpload} />
         )}</ModalExit>
-        <FormSettingsModal isOpen={showDefaultFormSettings} onClose={() => setShowDefaultFormSettings(false)} documentId={null} isDefault onSaved={loadFormConfig} />
+        <FormSettingsModal isOpen={showDefaultFormSettings} onClose={() => setShowDefaultFormSettings(false)} documentId={null} draftFields={draftFormFields ?? formFields} onDraftDone={setDraftFormFields} onDefaultChanged={() => { setDraftFormFields(null); loadFormConfig() }} />
       </>
     )
   }
@@ -2222,7 +2273,7 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
       <ModalExit show={!!(showDetailModal && selectedDoc)}>{showDetailModal && selectedDoc && (
         <DocumentDetailModal document={selectedDoc} startInEditMode={detailModalStartEditing} onClose={() => setShowDetailModal(false)} onUpdate={handleUpdateDocument} onDelete={handleDeleteDocument} onDefaultFormConfigChanged={loadFormConfig} upload={uploads[selectedDoc.id]} onUploadProgress={trackUpload} />
       )}</ModalExit>
-      <FormSettingsModal isOpen={showDefaultFormSettings} onClose={() => setShowDefaultFormSettings(false)} documentId={null} isDefault onSaved={loadFormConfig} />
+      <FormSettingsModal isOpen={showDefaultFormSettings} onClose={() => setShowDefaultFormSettings(false)} documentId={null} draftFields={draftFormFields ?? formFields} onDraftDone={setDraftFormFields} onDefaultChanged={() => { setDraftFormFields(null); loadFormConfig() }} />
     </>
   )
 }

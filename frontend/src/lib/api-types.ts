@@ -191,6 +191,8 @@ type PatientDocumentCreate = Partial<PatientDocumentClinicalFields> & {
   patient_user_id?: string | null
   visit_date?: string | null
   custom_fields?: Record<string, unknown>
+  // One-off field layout for just this document; omitted = the default form.
+  form_config?: FieldConfig[]
 }
 
 type PatientDocumentUpdate = Partial<PatientDocumentClinicalFields> & {

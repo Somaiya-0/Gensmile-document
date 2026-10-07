@@ -53,6 +53,10 @@ class PatientDocumentCreate(PatientDocumentBase):
     # server-side from the linked patient record, so patient_name isn't
     # required from the client in that case.
     patient_name: str = Field(default="", max_length=255)
+    # A one-off field layout for just this document (changed in the New
+    # Document form's settings but not made permanent). Omitted = copy the
+    # doctor's default.
+    form_config: list[dict] | None = None
 
 
 class PatientDocumentUpdate(BaseModel):
