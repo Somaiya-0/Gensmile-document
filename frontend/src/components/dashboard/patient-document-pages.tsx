@@ -58,6 +58,26 @@ export function getDocStatus(doc: PatientDocumentRead): { label: string; color: 
 // changed. Not the whole object: logo/file URLs are presigned and differ on
 // every fetch. updated_at alone isn't enough either -- a patient uploading a
 // file through the fill link adds a file row without touching the document.
+// Files still uploading for a document (created in the background, or
+// saved from its detail modal). Counted per file, not per byte.
+// ponytail: per-file granularity; switch uploads to XHR upload.onprogress if
+// single large files need a smooth bar.
+type UploadProgress = { done: number; total: number }
+
+function UploadBar({ progress, className = "" }: { progress: UploadProgress; className?: string }) {
+  const pct = Math.max(5, Math.round((progress.done / progress.total) * 100))
+  return (
+    <div className={className}>
+      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-blue-600">
+        <Loader2 className="h-3 w-3 animate-spin" /> Uploading files… {progress.done}/{progress.total}
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-blue-100">
+        <div className="h-full rounded-full bg-blue-600 transition-[width] duration-500" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  )
+}
+
 function docSignature(doc: PatientDocumentRead): string {
   return [doc.updated_at, doc.patient_submitted_at, doc.fill_enabled, doc.is_shared, doc.files?.map((f) => f.id).join(",")].join("|")
 }
@@ -614,10 +634,12 @@ function docToFormData(document: PatientDocumentRead): ClinicalFormData {
 }
 
 function DocumentDetailModal({
-  document, startInEditMode = false, onClose, onUpdate, onDelete, onDefaultFormConfigChanged,
+  document, startInEditMode = false, onClose, onUpdate, onDelete, onDefaultFormConfigChanged, upload, onUploadProgress,
 }: {
   document: PatientDocumentRead
   startInEditMode?: boolean
+  upload?: UploadProgress
+  onUploadProgress?: (docId: string, progress: UploadProgress | null) => void
   onClose: () => void
   onUpdate: (doc: PatientDocumentRead) => void
   onDelete: (documentId: string) => void
@@ -730,27 +752,34 @@ function DocumentDetailModal({
       // list as it lands, so if one fails the rest stay pending for a retry.
       if (fileChanges) {
         setUploading(true)
+        const total = (pendingLogo ? 1 : 0) + removedFileIds.size + pendingFiles.length
+        let done = 0
+        onUploadProgress?.(document.id, { done, total })
         try {
           if (pendingLogo) {
             const result = await uploadPatientDocumentLogo(token, document.id, pendingLogo.file)
             current = { ...current, logo_url: result.logo_url }
             clearPendingLogo()
             onUpdate(current)
+            onUploadProgress?.(document.id, { done: ++done, total })
           }
           for (const fileId of removedFileIds) {
             await deletePatientDocumentFile(token, fileId)
             current = { ...current, files: current.files.filter((f) => f.id !== fileId) }
             setRemovedFileIds((prev) => { const next = new Set(prev); next.delete(fileId); return next })
             onUpdate(current)
+            onUploadProgress?.(document.id, { done: ++done, total })
           }
           for (const file of pendingFiles) {
             const newFile = await uploadPatientDocumentAttachment(token, document.id, file)
             current = { ...current, files: [...current.files, newFile] }
             setPendingFiles((prev) => prev.filter((f) => f !== file))
             onUpdate(current)
+            onUploadProgress?.(document.id, { done: ++done, total })
           }
         } finally {
           setUploading(false)
+          onUploadProgress?.(document.id, null)
         }
       }
       if (fileChanges) Swal.fire({ icon: "success", title: "Saved", timer: 1000, showConfirmButton: false })
@@ -1013,6 +1042,7 @@ function DocumentDetailModal({
         </div>
 
         <div className="overflow-y-auto overscroll-none px-6 py-4 space-y-4">
+          {upload && <UploadBar progress={upload} className="rounded-xl border border-blue-100 bg-blue-50/50 p-3" />}
           <div className="border border-gray-200 rounded-xl p-4 bg-gray-50">
             <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-3">Patient Information</h4>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -1596,10 +1626,11 @@ function DocumentFormFields({
 // both their own dedicated pages and side-by-side on the combined Document
 // page, so the two never show the list differently.
 function DocumentListSection({
-  title, docs, emptyText, loading, onView, showHeader = true,
+  title, docs, emptyText, loading, onView, showHeader = true, uploads = {},
 }: {
   title: string
   docs: PatientDocumentRead[]
+  uploads?: Record<string, UploadProgress>
   emptyText: string
   loading: boolean
   onView: (docId: string) => void
@@ -1650,7 +1681,10 @@ function DocumentListSection({
                               {doc.patient_name?.[0]?.toUpperCase()}
                             </div>
                           )}
-                          <span className="font-medium text-gray-900">{doc.patient_name}</span>
+                          <div className="min-w-0">
+                            <span className="font-medium text-gray-900">{doc.patient_name}</span>
+                            {uploads[doc.id] && <UploadBar progress={uploads[doc.id]} className="mt-1 w-40" />}
+                          </div>
                         </div>
                       </td>
                       <td className="px-5 py-3">
@@ -1677,10 +1711,11 @@ function DocumentListSection({
 // rows per section (avatar, name + date, status pill) instead of a table,
 // with a "See more (N)" link to the full filtered list once there are more.
 function RecentDocumentsList({
-  title, docs, viewAllHref, onView,
+  title, docs, viewAllHref, onView, uploads = {},
 }: {
   title: string
   docs: PatientDocumentRead[]
+  uploads?: Record<string, UploadProgress>
   viewAllHref: string
   onView: (docId: string) => void
 }) {
@@ -1712,7 +1747,7 @@ function RecentDocumentsList({
                 )}
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-gray-900">{doc.patient_name}</p>
-                  <p className="text-xs text-gray-400">{new Date(doc.updated_at).toLocaleDateString()}</p>
+                  {uploads[doc.id] ? <UploadBar progress={uploads[doc.id]} className="mt-1" /> : <p className="text-xs text-gray-400">{new Date(doc.updated_at).toLocaleDateString()}</p>}
                 </div>
                 <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold ${status.color}`}>
                   <span className="h-1.5 w-1.5 rounded-full bg-current" />{status.label}
@@ -1763,6 +1798,15 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
   const [attachments, setAttachments] = useState<File[]>([])
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [uploadingFiles, setUploadingFiles] = useState(false)
+  const [uploads, setUploads] = useState<Record<string, UploadProgress>>({})
+  const trackUpload = useCallback((docId: string, progress: UploadProgress | null) => {
+    setUploads((prev) => {
+      const next = { ...prev }
+      if (progress) next[docId] = progress
+      else delete next[docId]
+      return next
+    })
+  }, [])
   const logoInputRef = useRef<HTMLInputElement>(null)
   const attachmentInputRef = useRef<HTMLInputElement>(null)
 
@@ -1839,19 +1883,35 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
     try {
       const payload = { ...formData, custom_fields: customFields } as PatientDocumentCreate
       const newDoc = await createPatientDocument(token, payload)
+      // List it right away; its files show a progress bar while they upload.
+      const total = (logo ? 1 : 0) + files.length
+      let done = 0
+      if (total > 0) trackUpload(newDoc.id, { done, total })
+      void refreshDocuments()
 
-      if (logo) {
-        if (onScreen()) setUploadingLogo(true)
-        try { await uploadPatientDocumentLogo(token, newDoc.id, logo) }
-        catch (e) { console.error("Logo upload failed:", e) }
-        finally { if (onScreen()) setUploadingLogo(false) }
-      }
+      try {
+        if (logo) {
+          if (onScreen()) setUploadingLogo(true)
+          try { await uploadPatientDocumentLogo(token, newDoc.id, logo) }
+          catch (e) { console.error("Logo upload failed:", e) }
+          finally { if (onScreen()) setUploadingLogo(false) }
+          trackUpload(newDoc.id, { done: ++done, total })
+        }
 
-      if (files.length > 0) {
-        if (onScreen()) setUploadingFiles(true)
-        try { for (const file of files) { await uploadPatientDocumentAttachment(token, newDoc.id, file) } }
-        catch (e) { console.error("File upload failed:", e) }
-        finally { if (onScreen()) setUploadingFiles(false) }
+        if (files.length > 0) {
+          if (onScreen()) setUploadingFiles(true)
+          try {
+            for (const file of files) {
+              await uploadPatientDocumentAttachment(token, newDoc.id, file)
+              trackUpload(newDoc.id, { done: ++done, total })
+              void refreshDocuments()
+            }
+          }
+          catch (e) { console.error("File upload failed:", e) }
+          finally { if (onScreen()) setUploadingFiles(false) }
+        }
+      } finally {
+        trackUpload(newDoc.id, null)
       }
 
       await refreshDocuments()
@@ -2046,12 +2106,14 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
                       docs={filteredDocuments.filter((d) => d.is_shared)}
                       viewAllHref="/dashboard/doctor-to-doctor"
                       onView={handleViewDocument}
+                      uploads={uploads}
                     />
                     <RecentDocumentsList
                       title="Doctor to Patient"
                       docs={filteredDocuments.filter((d) => d.fill_enabled)}
                       viewAllHref="/dashboard/doctor-to-patient"
                       onView={handleViewDocument}
+                      uploads={uploads}
                     />
                   </div>
                 )}
@@ -2061,7 +2123,7 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
         </div>
 
         <ModalExit show={!!(showDetailModal && selectedDoc)}>{showDetailModal && selectedDoc && (
-          <DocumentDetailModal document={selectedDoc} startInEditMode={detailModalStartEditing} onClose={() => setShowDetailModal(false)} onUpdate={handleUpdateDocument} onDelete={handleDeleteDocument} onDefaultFormConfigChanged={loadFormConfig} />
+          <DocumentDetailModal document={selectedDoc} startInEditMode={detailModalStartEditing} onClose={() => setShowDetailModal(false)} onUpdate={handleUpdateDocument} onDelete={handleDeleteDocument} onDefaultFormConfigChanged={loadFormConfig} upload={uploads[selectedDoc.id]} onUploadProgress={trackUpload} />
         )}</ModalExit>
         <FormSettingsModal isOpen={showDefaultFormSettings} onClose={() => setShowDefaultFormSettings(false)} documentId={null} isDefault onSaved={loadFormConfig} />
       </>
@@ -2099,7 +2161,7 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
         </div>
 
         {/* List - the landing content for this section */}
-        <DocumentListSection title={modeTitle} docs={modeDocuments} emptyText={modeEmptyText} loading={loading} onView={handleViewDocument} showHeader={false} />
+        <DocumentListSection title={modeTitle} docs={modeDocuments} emptyText={modeEmptyText} loading={loading} onView={handleViewDocument} showHeader={false} uploads={uploads} />
       </div>
 
       {/* Create-document modal: quick "share for doctor" panel + the full form */}
@@ -2150,7 +2212,7 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
       )}</ModalExit>
 
       <ModalExit show={!!(showDetailModal && selectedDoc)}>{showDetailModal && selectedDoc && (
-        <DocumentDetailModal document={selectedDoc} startInEditMode={detailModalStartEditing} onClose={() => setShowDetailModal(false)} onUpdate={handleUpdateDocument} onDelete={handleDeleteDocument} onDefaultFormConfigChanged={loadFormConfig} />
+        <DocumentDetailModal document={selectedDoc} startInEditMode={detailModalStartEditing} onClose={() => setShowDetailModal(false)} onUpdate={handleUpdateDocument} onDelete={handleDeleteDocument} onDefaultFormConfigChanged={loadFormConfig} upload={uploads[selectedDoc.id]} onUploadProgress={trackUpload} />
       )}</ModalExit>
       <FormSettingsModal isOpen={showDefaultFormSettings} onClose={() => setShowDefaultFormSettings(false)} documentId={null} isDefault onSaved={loadFormConfig} />
     </>
