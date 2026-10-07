@@ -655,7 +655,7 @@ export default function DoctorToDoctorSharePage() {
           </div>
         ))}
 
-        <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+        <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-base font-semibold text-gray-900">Attached Files ({(document.files?.length || 0) - removedFileIds.size + pendingFiles.length})</h2>
             {editing && (
@@ -677,7 +677,7 @@ export default function DoctorToDoctorSharePage() {
           ) : (
             <div className="space-y-3">
               {(document.files || []).map((file) => (
-                <div key={file.id} className="flex items-center gap-4 rounded-xl border border-gray-200 px-4 py-3 hover:bg-gray-50 transition-colors">
+                <div key={file.id} className="flex flex-wrap items-center gap-3 sm:gap-4 rounded-xl border border-gray-200 px-3 sm:px-4 py-3 hover:bg-gray-50 transition-colors">
                   <div className="shrink-0">
                     {isImageFile(file) ? (
                       <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center">
@@ -702,14 +702,14 @@ export default function DoctorToDoctorSharePage() {
                   </div>
 
                   {file.file_url && (
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="order-last flex basis-full items-center gap-2 sm:order-none sm:basis-auto sm:shrink-0">
                       {isImageFile(file) && (
-                        <button onClick={() => setPreviewFile(file)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-100">
+                        <button onClick={() => setPreviewFile(file)} className="flex-1 sm:flex-none justify-center inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-100">
                           <Eye className="w-3.5 h-3.5" />
                           Preview
                         </button>
                       )}
-                      <a href={file.file_url} target="_blank" rel="noreferrer" download={file.file_name} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-xs font-medium text-white hover:bg-blue-700">
+                      <a href={file.file_url} target="_blank" rel="noreferrer" download={file.file_name} className="flex-1 sm:flex-none justify-center inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-xs font-medium text-white hover:bg-blue-700">
                         <Download className="w-3.5 h-3.5" />
                         Download
                       </a>
@@ -729,7 +729,7 @@ export default function DoctorToDoctorSharePage() {
                 </div>
               ))}
               {pendingFiles.map((file, i) => (
-                <div key={`pending-${i}-${file.name}`} className="flex items-center gap-4 rounded-xl border border-dashed border-blue-200 bg-blue-50/50 px-4 py-3">
+                <div key={`pending-${i}-${file.name}`} className="flex items-center gap-3 sm:gap-4 rounded-xl border border-dashed border-blue-200 bg-blue-50/50 px-3 sm:px-4 py-3">
                   <FileText className="w-6 h-6 text-blue-500 shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">{file.name}</p>
