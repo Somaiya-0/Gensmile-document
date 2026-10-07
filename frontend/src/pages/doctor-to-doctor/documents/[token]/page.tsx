@@ -301,6 +301,65 @@ export default function DoctorToDoctorSharePage() {
     setEditing(false)
   }
 
+  const valuesRef = useRef(values)
+  valuesRef.current = values
+  const dirtyKeysRef = useRef(dirtyKeys)
+  dirtyKeysRef.current = dirtyKeys
+  const [autoSave, setAutoSave] = useState<"idle" | "saving" | "saved" | "error">("idle")
+
+  // Field edits save on their own (see the debounce below). Only the edited
+  // keys are sent; a key typed into again while the request was in flight
+  // stays dirty (and keeps its local value) for the next round.
+  const saveFields = async () => {
+    const keys = [...dirtyKeysRef.current]
+    if (!document || !accessToken || !token || keys.length === 0) return
+    const sent = { ...valuesRef.current }
+    const customFields: Record<string, unknown> = {}
+    const payload: Record<string, unknown> = {}
+    let touchedCustom = false
+
+    for (const key of keys) {
+      if (PATIENT_META_KEYS.has(key)) {
+        // patient_name is a required column (empty string is fine, null
+        // is not) -- only email/phone/visit_date fall back to null when
+        // cleared.
+        payload[key] = key === "patient_name" ? sent[key] : sent[key] || null
+        continue
+      }
+      const field = document.fields.find((f) => f.key === key)
+      if (!field) continue
+      if (field.core) {
+        payload[key] = sent[key]
+      } else {
+        customFields[key] = sent[key]
+        touchedCustom = true
+      }
+    }
+    if (touchedCustom) payload.custom_fields = customFields
+
+    const updated = await updateDoctorToDoctorDocument(accessToken, token, payload)
+    const remaining = new Set(dirtyKeysRef.current)
+    for (const key of keys) if (valuesRef.current[key] === sent[key]) remaining.delete(key)
+    dirtyKeysRef.current = remaining
+    setDirtyKeys(remaining)
+    setDocument(updated)
+    const fresh: Record<string, unknown> = { ...updated.values, visit_date: updated.visit_date ? updated.visit_date.split("T")[0] : "" }
+    setValues((prev) => {
+      for (const key of remaining) fresh[key] = prev[key]
+      return fresh
+    })
+  }
+
+  useEffect(() => {
+    if (!editing || dirtyKeys.size === 0 || autoSave === "saving") return
+    const t = setTimeout(() => {
+      setAutoSave("saving")
+      saveFields().then(() => setAutoSave("saved"), () => setAutoSave("error"))
+    }, autoSave === "error" ? 5000 : 800)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, dirtyKeys, values, autoSave])
+
   const handleSave = async () => {
     if (!document || !accessToken || !token) return
     const fileChanges = pendingFiles.length > 0 || removedFileIds.size > 0
@@ -312,35 +371,7 @@ export default function DoctorToDoctorSharePage() {
     }
     setSaving(true)
     try {
-      if (dirtyKeys.size > 0) {
-      const customFields: Record<string, unknown> = {}
-      const payload: Record<string, unknown> = {}
-      let touchedCustom = false
-
-      for (const key of dirtyKeys) {
-        if (PATIENT_META_KEYS.has(key)) {
-          // patient_name is a required column (empty string is fine, null
-          // is not) -- only email/phone/visit_date fall back to null when
-          // cleared.
-          payload[key] = key === "patient_name" ? values[key] : values[key] || null
-          continue
-        }
-        const field = document.fields.find((f) => f.key === key)
-        if (!field) continue
-        if (field.core) {
-          payload[key] = values[key]
-        } else {
-          customFields[key] = values[key]
-          touchedCustom = true
-        }
-      }
-      if (touchedCustom) payload.custom_fields = customFields
-
-      const updated = await updateDoctorToDoctorDocument(accessToken, token, payload)
-      setDocument(updated)
-      loadValuesFromDocument(updated)
-      setDirtyKeys(new Set())
-      }
+      await saveFields()
 
       // Then the held file changes; each is dropped from the pending lists as
       // it lands, so a failure leaves only the rest pending for a retry.
@@ -360,8 +391,8 @@ export default function DoctorToDoctorSharePage() {
           refreshDocument()
         }
       }
+      if (fileChanges) Swal.fire({ icon: "success", title: "Saved", timer: 1000, showConfirmButton: false })
       setEditing(false)
-      Swal.fire({ icon: "success", title: "Saved", timer: 1000, showConfirmButton: false })
     } catch (error) {
       Swal.fire({ icon: "error", title: "Couldn't save", text: errMsg(error) })
     } finally {
@@ -634,17 +665,6 @@ export default function DoctorToDoctorSharePage() {
           </div>
         ))}
 
-        {editing && (
-          <div className="flex gap-2">
-            <button onClick={handleSave} disabled={saving} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 disabled:opacity-60">
-              {saving ? "Saving..." : "Save Changes"}
-            </button>
-            <button onClick={handleCancelEdit} disabled={saving} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50">
-              Cancel
-            </button>
-          </div>
-        )}
-
         <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-base font-semibold text-gray-900">Attached Files ({(document.files?.length || 0) - removedFileIds.size + pendingFiles.length})</h2>
@@ -723,7 +743,7 @@ export default function DoctorToDoctorSharePage() {
                   <FileText className="w-6 h-6 text-blue-500 shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">{file.name}</p>
-                    <p className="text-xs text-blue-600 mt-1">{uploading ? "Uploading…" : "Pending — added when you save"}</p>
+                    <p className="text-xs text-blue-600 mt-1">{uploading ? "Uploading…" : "Pending — click Save files"}</p>
                   </div>
                   <button onClick={() => setPendingFiles((prev) => prev.filter((f) => f !== file))} disabled={saving} title="Don't add this file" className="p-1.5 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 shrink-0">
                     <X className="w-4 h-4" />
@@ -737,6 +757,20 @@ export default function DoctorToDoctorSharePage() {
         <div className="text-center">
           <p className="text-xs text-gray-400">This secure link is intended for healthcare professionals only.</p>
         </div>
+
+        {editing && (
+          <div className="sticky bottom-3 z-10 rounded-2xl border border-gray-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur flex items-center gap-2">
+            <span className={`flex-1 text-xs ${autoSave === "error" ? "text-red-600" : "text-gray-500"}`}>
+              {autoSave === "saving" ? "Saving…" : autoSave === "error" ? "Couldn't save — retrying…" : autoSave === "saved" && dirtyKeys.size === 0 ? "All changes saved" : pendingFiles.length > 0 || removedFileIds.size > 0 ? "File changes wait for Save" : "Changes save automatically"}
+            </span>
+            {(pendingFiles.length > 0 || removedFileIds.size > 0) && (
+              <button onClick={handleCancelEdit} disabled={saving} className="px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60">Discard files</button>
+            )}
+            <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 disabled:opacity-60">
+              {saving ? "Saving..." : pendingFiles.length > 0 || removedFileIds.size > 0 ? "Save files" : "Done"}
+            </button>
+          </div>
+        )}
       </div>
       </div>
 

@@ -676,6 +676,47 @@ function DocumentDetailModal({
     }
   }, [document, editing])
 
+  const formDataRef = useRef(formData)
+  formDataRef.current = formData
+  const customFieldsRef = useRef(customFields)
+  customFieldsRef.current = customFields
+  const [autoSave, setAutoSave] = useState<"idle" | "saving" | "saved" | "error">("idle")
+
+  // Field edits save on their own (see the debounce below). Only the edited
+  // keys are sent; a key typed into again while the request was in flight
+  // stays dirty for the next round.
+  const saveFields = async (): Promise<PatientDocumentRead> => {
+    const keys = [...dirtyKeysRef.current]
+    if (keys.length === 0) return document
+    const valueOf = (key: string) => (key in formDataRef.current ? (formDataRef.current as Record<string, unknown>)[key] : customFieldsRef.current[key])
+    const sent: Record<string, unknown> = {}
+    const payload: Record<string, unknown> = {}
+    const dirtyCustomFields: Record<string, unknown> = {}
+    for (const key of keys) {
+      sent[key] = valueOf(key)
+      if (key in formDataRef.current) payload[key] = sent[key]
+      else dirtyCustomFields[key] = sent[key]
+    }
+    if (Object.keys(dirtyCustomFields).length > 0) payload.custom_fields = dirtyCustomFields
+    const updated = await updatePatientDocument(token, document.id, payload)
+    const remaining = new Set(dirtyKeysRef.current)
+    for (const key of keys) if (valueOf(key) === sent[key]) remaining.delete(key)
+    dirtyKeysRef.current = remaining
+    setDirtyKeys(remaining)
+    onUpdate(updated)
+    return updated
+  }
+
+  useEffect(() => {
+    if (!editing || dirtyKeys.size === 0 || autoSave === "saving") return
+    const t = setTimeout(() => {
+      setAutoSave("saving")
+      saveFields().then(() => setAutoSave("saved"), () => setAutoSave("error"))
+    }, autoSave === "error" ? 5000 : 800)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, dirtyKeys, formData, customFields, autoSave])
+
   const handleSave = async () => {
     if (dirtyKeys.size === 0 && !fileChanges) {
       setEditing(false)
@@ -683,25 +724,7 @@ function DocumentDetailModal({
     }
     setSaving(true)
     try {
-      let current = document
-      if (dirtyKeys.size > 0) {
-      const payload: Record<string, unknown> = {}
-      const dirtyCustomFields: Record<string, unknown> = {}
-      let touchedCustom = false
-      for (const key of dirtyKeys) {
-        if (key in formData) {
-          payload[key] = (formData as Record<string, unknown>)[key]
-        } else {
-          dirtyCustomFields[key] = customFields[key]
-          touchedCustom = true
-        }
-      }
-      if (touchedCustom) payload.custom_fields = dirtyCustomFields
-
-      current = await updatePatientDocument(token, document.id, payload)
-      onUpdate(current)
-      setDirtyKeys(new Set())
-      }
+      let current = await saveFields()
 
       // Then the held file changes. Each one is dropped from the pending
       // list as it lands, so if one fails the rest stay pending for a retry.
@@ -730,8 +753,8 @@ function DocumentDetailModal({
           setUploading(false)
         }
       }
+      if (fileChanges) Swal.fire({ icon: "success", title: "Saved", timer: 1000, showConfirmButton: false })
       setEditing(false)
-      Swal.fire({ icon: "success", title: "Saved", timer: 1000, showConfirmButton: false })
     } catch (error) {
       Swal.fire({ icon: "error", title: "Couldn't save", text: errMsg(error) })
     } finally {
@@ -817,8 +840,10 @@ function DocumentDetailModal({
       if (await confirmDiscard({ uploading, unsaved })) onClose()
       return
     }
+    // Field edits autosave -- flush any still waiting instead of asking.
+    if (dirtyKeys.size > 0) await saveFields().catch(() => {})
     // Discard keeps the form open, just drops the edits.
-    if (unsaved) {
+    if (editing && (dirtyKeysRef.current.size > 0 || fileChanges)) {
       if (await confirmDiscard()) discardEdits()
       return
     }
@@ -907,7 +932,7 @@ function DocumentDetailModal({
           <div className="flex items-center gap-3">
             <div className="relative group">
               {pendingLogo || document.logo_url ? (
-                <img src={pendingLogo?.preview ?? document.logo_url ?? undefined} alt="Logo" title={pendingLogo ? "New logo -- saved when you click Save" : undefined} className={`w-12 h-12 rounded-lg object-cover border ${pendingLogo ? "border-blue-400 ring-2 ring-blue-200" : "border-gray-200"}`} />
+                <img src={pendingLogo?.preview ?? document.logo_url ?? undefined} alt="Logo" title={pendingLogo ? "New logo -- saved when you click Save files" : undefined} className={`w-12 h-12 rounded-lg object-cover border ${pendingLogo ? "border-blue-400 ring-2 ring-blue-200" : "border-gray-200"}`} />
               ) : (
                 <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center border-2 border-dashed border-gray-300">
                   <FileText className="w-5 h-5 text-gray-400" />
@@ -1032,7 +1057,7 @@ function DocumentDetailModal({
                     {getFileIcon(file.file_type, file.file_name)}
                     <span className={`text-[11px] truncate flex-1 ${removing ? "text-gray-400 line-through" : "text-gray-700"}`}>{file.file_name}</span>
                     {removing ? (
-                      <span className="text-[10px] font-medium text-red-600">Removed on save</span>
+                      <span className="text-[10px] font-medium text-red-600">Removed on Save files</span>
                     ) : (
                       <>
                         <span className="text-[10px] text-gray-400">{(file.file_size / 1024).toFixed(1)} KB</span>
@@ -1049,7 +1074,7 @@ function DocumentDetailModal({
                   <div key={`pending-${i}-${file.name}`} className="flex items-center gap-2 rounded-lg border border-dashed border-blue-200 bg-blue-50/50 px-3 py-2">
                     {getFileIcon(file.type, file.name)}
                     <span className="text-[11px] text-gray-700 truncate flex-1">{file.name}</span>
-                    <span className="text-[10px] font-medium text-blue-600">{uploading ? "Uploading…" : "Pending — saved on Save"}</span>
+                    <span className="text-[10px] font-medium text-blue-600">{uploading ? "Uploading…" : "Pending — click Save files"}</span>
                     <button onClick={() => setPendingFiles((prev) => prev.filter((f) => f !== file))} disabled={saving} title="Don't add this file" className="p-0.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-600 disabled:opacity-50"><X className="w-3 h-3" /></button>
                   </div>
                 ))}
@@ -1058,17 +1083,22 @@ function DocumentDetailModal({
             </div>
           </div>
 
-          {editing ? (
-            <div>
-              <div className="flex gap-2">
-                <button onClick={handleSave} disabled={saving} className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed">{saving ? (uploading ? "Uploading files..." : "Saving...") : "Save Changes"}</button>
-                <button onClick={discardEdits} disabled={saving} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60">Cancel</button>
-              </div>
-            </div>
-          ) : (
+          {!editing && (
             <button onClick={() => onDelete(document.id)} className="w-full py-2 border border-red-200 text-red-600 rounded-xl text-sm font-medium hover:bg-red-50">Delete Document</button>
           )}
         </div>
+
+        {editing && (
+          <div className="shrink-0 border-t border-gray-200 bg-white px-6 py-3 flex items-center gap-2">
+            <span className={`flex-1 text-xs ${autoSave === "error" ? "text-red-600" : "text-gray-500"}`}>
+              {autoSave === "saving" ? "Saving…" : autoSave === "error" ? "Couldn't save — retrying…" : autoSave === "saved" && dirtyKeys.size === 0 ? "All changes saved" : fileChanges ? "File changes wait for Save" : "Changes save automatically"}
+            </span>
+            {fileChanges && (
+              <button onClick={discardEdits} disabled={saving} className="px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60">Discard files</button>
+            )}
+            <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed">{saving ? (uploading ? "Uploading files..." : "Saving...") : fileChanges ? "Save files" : "Done"}</button>
+          </div>
+        )}
       </div>
 
       <ModalExit show={showHistory}>{showHistory && <ChangeHistoryModal changes={history} onClose={() => setShowHistory(false)} />}</ModalExit>
