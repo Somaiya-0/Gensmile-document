@@ -54,15 +54,15 @@ function SharedDocumentsPage() {
               <thead>
                 <tr className="border-b border-gray-100 text-left text-xs font-medium uppercase tracking-wide text-gray-400">
                   <th className="px-5 py-3">Patient</th>
-                  <th className="px-5 py-3">Shared by</th>
-                  <th className="px-5 py-3">Updated</th>
+                  <th className="hidden px-5 py-3 whitespace-nowrap sm:table-cell">Shared by</th>
+                  <th className="hidden px-5 py-3 sm:table-cell">Updated</th>
                   <th className="px-5 py-3" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {docs.map((doc) => (
                   <tr key={doc.share_token} onClick={() => navigate(`/doctor-to-doctor/documents/${doc.share_token}`)} className="cursor-pointer transition-colors hover:bg-gray-50">
-                    <td className="px-5 py-3">
+                    <td className="px-4 py-3 sm:px-5">
                       <div className="flex items-center gap-3">
                         {doc.logo_url ? (
                           <img src={doc.logo_url} alt="" className="h-9 w-9 shrink-0 rounded-lg border border-gray-200 object-cover" />
@@ -71,12 +71,16 @@ function SharedDocumentsPage() {
                             {doc.patient_name?.[0]?.toUpperCase()}
                           </div>
                         )}
-                        <span className="font-medium text-gray-900">{doc.patient_name || "—"}</span>
+                        <div className="min-w-0">
+                          <p className="font-medium text-gray-900">{doc.patient_name || "—"}</p>
+                          {/* Phones: shared-by and date go under the name instead of their own columns. */}
+                          <p className="mt-0.5 text-xs text-gray-500 sm:hidden">Dr. {doc.owner_name} · {new Date(doc.updated_at).toLocaleDateString()}</p>
+                        </div>
                       </div>
                     </td>
-                    <td className="px-5 py-3 text-gray-700">Dr. {doc.owner_name}</td>
-                    <td className="px-5 py-3 text-gray-500">{new Date(doc.updated_at).toLocaleDateString()}</td>
-                    <td className="px-5 py-3 text-right"><ChevronRight className="inline-block h-4 w-4 text-gray-300" /></td>
+                    <td className="hidden px-5 py-3 whitespace-nowrap text-gray-700 sm:table-cell">Dr. {doc.owner_name}</td>
+                    <td className="hidden px-5 py-3 text-gray-500 sm:table-cell">{new Date(doc.updated_at).toLocaleDateString()}</td>
+                    <td className="px-4 py-3 text-right sm:px-5"><ChevronRight className="inline-block h-4 w-4 text-gray-300" /></td>
                   </tr>
                 ))}
               </tbody>
