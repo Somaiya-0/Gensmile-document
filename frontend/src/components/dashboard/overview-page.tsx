@@ -150,11 +150,9 @@ export function OverviewPage() {
                     })}
                   </div>
                 )}
-                {section.docs.length > 5 && (
-                  <Link to={`/dashboard/${section.path}`} className="block px-5 pb-1 pt-2 text-xs font-medium text-blue-600 hover:text-blue-700">
-                    See more ({section.docs.length}) →
-                  </Link>
-                )}
+                <Link to={`/dashboard/${section.path}`} className="block px-5 pb-1 pt-2 text-xs font-medium text-blue-600 hover:text-blue-700">
+                  See more ({section.docs.length}) →
+                </Link>
               </div>
             ))}
           </div>
