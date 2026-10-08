@@ -446,8 +446,8 @@ export function FormSettingsModal({
     }
     const choice = await Swal.fire({
       icon: "question",
-      title: "Save these form changes?",
-      text: "They only affect this form -- the default form and other forms stay as they are.",
+      title: "Keep your changes?",
+      html: "Your changes only apply to this form. Other forms won't change.<br><br><b>Save to current form</b> keeps them.<br><b>Just for now</b> uses them until you close this form.",
       showDenyButton: true,
       showCancelButton: true,
       confirmButtonText: "Save to current form",
