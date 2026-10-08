@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { ArrowRight, FileText, Loader2, Send, Stethoscope, Users } from "lucide-react"
 
 import { getDocStatus } from "@/components/dashboard/patient-document-pages"
@@ -71,14 +71,12 @@ export function OverviewPage() {
   const patientCount = documents.filter((d) => d.fill_enabled).length
   const submittedCount = documents.filter((d) => d.patient_submitted_at).length
 
-  const recent = [...documents]
-    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-    .slice(0, 8)
-
-  const openRecent = (doc: PatientDocumentRead) => {
-    const target = doc.is_shared ? "doctor-to-doctor" : "doctor-to-patient"
-    navigate(`/dashboard/${target}?doc=${doc.id}`)
-  }
+  const byNewest = [...documents].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+  // Recent activity: the newest 5 per workflow, with "See more" for the rest.
+  const recentSections = [
+    { title: "Doctor to Doctor", path: "doctor-to-doctor", docs: byNewest.filter((d) => d.is_shared), empty: "No documents shared with doctors yet" },
+    { title: "Doctor to Patient", path: "doctor-to-patient", docs: byNewest.filter((d) => d.fill_enabled), empty: "No documents sent to patients yet" },
+  ]
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -115,34 +113,50 @@ export function OverviewPage() {
         </div>
         {loading ? (
           <div className="flex justify-center p-10"><Loader2 className="h-5 w-5 animate-spin text-blue-600" /></div>
-        ) : recent.length === 0 ? (
+        ) : documents.length === 0 ? (
           <div className="p-10 text-center">
             <FileText className="mx-auto mb-2 h-8 w-8 text-gray-300" />
             <p className="text-sm text-gray-500">No documents yet.</p>
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {recent.map((doc) => {
-              const status = getDocStatus(doc)
-              return (
-                <div key={doc.id} className="flex cursor-pointer items-center gap-3 px-5 py-3 transition-colors hover:bg-gray-50" onClick={() => openRecent(doc)}>
-                  {doc.logo_url ? (
-                    <img src={doc.logo_url} alt="" className="h-9 w-9 shrink-0 rounded-lg border border-gray-200 object-cover" />
-                  ) : (
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-xs font-semibold text-blue-600">
-                      {doc.patient_name?.[0]?.toUpperCase()}
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-gray-900">{doc.patient_name}</p>
-                    <p className="text-[11px] text-gray-500">{new Date(doc.updated_at).toLocaleDateString()}</p>
+            {recentSections.map((section) => (
+              <div key={section.path} className="py-2">
+                <p className="px-5 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">{section.title}</p>
+                {section.docs.length === 0 ? (
+                  <p className="px-5 pb-2 text-xs text-gray-400">{section.empty}</p>
+                ) : (
+                  <div className="divide-y divide-gray-100">
+                    {section.docs.slice(0, 5).map((doc) => {
+                      const status = getDocStatus(doc)
+                      return (
+                        <div key={doc.id} className="flex cursor-pointer items-center gap-3 px-5 py-3 transition-colors hover:bg-gray-50" onClick={() => navigate(`/dashboard/${section.path}?doc=${doc.id}`)}>
+                          {doc.logo_url ? (
+                            <img src={doc.logo_url} alt="" className="h-9 w-9 shrink-0 rounded-lg border border-gray-200 object-cover" />
+                          ) : (
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-xs font-semibold text-blue-600">
+                              {doc.patient_name?.[0]?.toUpperCase()}
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-gray-900">{doc.patient_name}</p>
+                            <p className="text-[11px] text-gray-500">{new Date(doc.updated_at).toLocaleDateString()}</p>
+                          </div>
+                          <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold ${status.color}`}>
+                            <span className="h-1.5 w-1.5 rounded-full bg-current" />{status.label}
+                          </span>
+                        </div>
+                      )
+                    })}
                   </div>
-                  <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold ${status.color}`}>
-                    <span className="h-1.5 w-1.5 rounded-full bg-current" />{status.label}
-                  </span>
-                </div>
-              )
-            })}
+                )}
+                {section.docs.length > 5 && (
+                  <Link to={`/dashboard/${section.path}`} className="block px-5 pb-1 pt-2 text-xs font-medium text-blue-600 hover:text-blue-700">
+                    See more ({section.docs.length}) →
+                  </Link>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>
