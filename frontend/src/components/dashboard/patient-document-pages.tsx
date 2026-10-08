@@ -20,7 +20,7 @@ import {
   toggleFillLink, getDocumentFormConfig, updateDocumentFormConfig,
   getFormConfig, updateFormConfig, getPatients,
   downloadPatientDocumentZip,
-  getDoctorToDoctorFormConfig, updateDoctorToDoctorFormConfig,
+  getDoctorToDoctorFormConfig,
 } from "@/lib/api-client"
 import type {
   DoctorPatient, FieldConfig, PatientDocumentChangeLog, PatientDocumentCreate, PatientDocumentFileRead, PatientDocumentRead,
@@ -377,8 +377,14 @@ export function FormSettingsModal({
   const fieldsRef = useRef(fields)
   fieldsRef.current = fields
   const changedRef = useRef(false)
+  // Read at open time through a ref: loadFields is memoized, and capturing
+  // the prop directly froze it at its first value (the New Document form
+  // mounts this before the default form has loaded, so it opened empty).
+  const initialFieldsRef = useRef(initialFields)
+  initialFieldsRef.current = initialFields
 
   const loadFields = useCallback(async () => {
+    const initialFields = initialFieldsRef.current
     setLoading(true)
     try {
       const data = initialFields
@@ -396,8 +402,6 @@ export function FormSettingsModal({
     } finally {
       setLoading(false)
     }
-    // initialFields is read once per open, not tracked.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentId, isDefault, shareToken, token])
 
   // Load once per open. Re-running on a new loadFields (e.g. a refreshed
