@@ -606,9 +606,24 @@ export function FormSettingsModal({
                   <Plus className="w-4 h-4" /> Add New Field
                 </button>
                 {deletedFields.length > 0 && (
-                  <button onClick={() => restoreFields([deletedFields[0].field])} title={`Restore "${deletedFields[0].field.label}"`} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-50">
-                    <RotateCcw className="w-3.5 h-3.5" /> Undo delete
-                  </button>
+                  // Lists every field deleted this session (newest first);
+                  // the doctor picks which one comes back.
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-50">
+                        <RotateCcw className="w-3.5 h-3.5" /> Undo delete
+                        <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="z-[80] min-w-[220px] max-h-72 overflow-y-auto rounded-xl border-gray-200 p-1.5">
+                      {deletedFields.map(({ field }) => (
+                        <DropdownMenuItem key={field.key} onClick={() => restoreFields([field])} className="cursor-pointer flex-col items-start gap-0 rounded-lg px-3 py-2">
+                          <span className="text-sm font-medium text-gray-900">{field.label}</span>
+                          <span className="text-[11px] text-gray-500">{field.section || "Overview"}</span>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 )}
                 <span className="flex-1" />
                 {saving && (
