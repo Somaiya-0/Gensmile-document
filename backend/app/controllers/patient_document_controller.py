@@ -1094,6 +1094,7 @@ async def get_patient_fill_document(
         patient_name=doc.patient_name,
         patient_email=doc.patient_email,  # ADD THIS
         patient_phone=doc.patient_phone,  # ADD THIS
+        visit_date=doc.visit_date,
         doctor_name=await _doctor_display_name(db, doc),
         logo_url=s3_service.get_presigned_url(doc.logo_key),
         fields=editable_fields,
@@ -1293,6 +1294,9 @@ async def submit_patient_fill_document(
         if new_val:
             _add_change_log(db, doc.id, None, "value", attr, label, getattr(doc, attr), new_val)
             setattr(doc, attr, new_val)
+    if payload.visit_date is not None:
+        _add_change_log(db, doc.id, None, "value", "visit_date", "Visit Date", doc.visit_date, payload.visit_date)
+        doc.visit_date = payload.visit_date
 
     doc.patient_submitted_at = utc_now()
 

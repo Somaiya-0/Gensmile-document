@@ -17,7 +17,7 @@ export default function PatientFillFormPage() {
 
   const [form, setForm] = useState<PatientFillFormRead | null>(null)
   const [values, setValues] = useState<Record<string, unknown>>({})
-  const [contact, setContact] = useState({ patient_name: "", patient_email: "", patient_phone: "" })
+  const [contact, setContact] = useState({ patient_name: "", patient_email: "", patient_phone: "", visit_date: "" })
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -50,6 +50,7 @@ export default function PatientFillFormPage() {
         patient_name: data.patient_name || "",
         patient_email: (data.values?.patient_email as string) || data.patient_email || "",
         patient_phone: (data.values?.patient_phone as string) || data.patient_phone || "",
+        visit_date: data.visit_date ? data.visit_date.split("T")[0] : "",
       })
       setSubmitted(!!data.submitted)
       setFiles(data.files || [])
@@ -84,6 +85,7 @@ export default function PatientFillFormPage() {
           patient_name: data.patient_name || "",
           patient_email: (data.values?.patient_email as string) || data.patient_email || "",
           patient_phone: (data.values?.patient_phone as string) || data.patient_phone || "",
+          visit_date: data.visit_date ? data.visit_date.split("T")[0] : "",
         }))
         setFiles(data.files || [])
       })
@@ -183,6 +185,7 @@ export default function PatientFillFormPage() {
         patient_name: contact.patient_name,
         patient_email: contact.patient_email,
         patient_phone: contact.patient_phone,
+        visit_date: contact.visit_date || null,
         values,
       })
       setForm(data)
@@ -291,6 +294,10 @@ export default function PatientFillFormPage() {
             <span>Phone</span>
             {contact.patient_phone || "—"}
           </div>
+          <div>
+            <span>Visit Date</span>
+            {contact.visit_date ? new Date(`${contact.visit_date}T00:00:00`).toLocaleDateString() : "—"}
+          </div>
         </div>
 
         {sortedSections.map(([section, fields]) => (
@@ -397,6 +404,16 @@ export default function PatientFillFormPage() {
                   value={contact.patient_phone}
                   onChange={(e) => handleContactChange("patient_phone", e.target.value)}
                   placeholder="(555) 123-4567"
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Visit Date</label>
+                <input
+                  type="date"
+                  value={contact.visit_date}
+                  onChange={(e) => handleContactChange("visit_date", e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
                 />
               </div>

@@ -180,6 +180,7 @@ class PatientFillFormRead(BaseModel):
     patient_name: str
     patient_email: str | None = None  # ADD THIS
     patient_phone: str | None = None  # ADD THIS
+    visit_date: datetime | None = None
     doctor_name: str
     logo_url: str | None = None
     fields: list[dict]
@@ -191,6 +192,7 @@ class PatientFillFormSubmit(BaseModel):
     patient_name: str | None = Field(default=None, max_length=255)
     patient_email: str | None = Field(default=None, max_length=255)
     patient_phone: str | None = Field(default=None, max_length=50)
+    visit_date: datetime | None = None
     values: dict = Field(default_factory=dict)
 
 

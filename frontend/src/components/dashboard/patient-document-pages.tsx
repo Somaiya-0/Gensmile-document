@@ -507,6 +507,20 @@ export function FormSettingsModal({
   //-stale local list -- moved by key against whatever the fresh fetch
   // returns, so a concurrent add/delete by someone else doesn't shift the
   // meaning of "index N" out from under this move.
+  // Moves a whole section (all its fields, kept in their order) past the
+  // neighbouring section. Section order everywhere follows field order.
+  const moveSection = (name: string, direction: number) => {
+    void applyAndPersist((current) => {
+      const sectionOf = (f: FieldConfig) => f.section || "Overview"
+      const order = [...new Set(current.map(sectionOf))]
+      const i = order.indexOf(name)
+      const j = i + direction
+      if (i === -1 || j < 0 || j >= order.length) return current
+      ;[order[i], order[j]] = [order[j], order[i]]
+      return order.flatMap((s) => current.filter((f) => sectionOf(f) === s))
+    })
+  }
+
   const moveField = (key: string, direction: number) => {
     void applyAndPersist((current) => {
       const index = current.findIndex((f) => f.key === key)
@@ -555,15 +569,21 @@ export function FormSettingsModal({
                 )}
               </div>
               <div className="space-y-3">
-                {Object.entries(sections).map(([sectionName, sectionFields]) => (
+                {Object.entries(sections).map(([sectionName, sectionFields], sectionIndex, allSections) => (
                   <div key={sectionName} className="border border-gray-200 rounded-xl overflow-hidden">
-                    <button onClick={() => setExpandedSection(expandedSection === sectionName ? null : sectionName)} className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100">
-                      <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                        {sectionName}
-                        <span className="ml-2 text-gray-400 font-normal normal-case">({sectionFields.filter((f) => f.active).length} visible)</span>
-                      </span>
-                      <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${expandedSection === sectionName ? "rotate-180" : ""}`} />
-                    </button>
+                    <div className="flex items-center bg-gray-50">
+                      <div className="flex flex-col gap-0.5 pl-3 shrink-0">
+                        <button onClick={() => moveSection(sectionName, -1)} disabled={sectionIndex === 0} title="Move section up" className="text-gray-400 hover:text-gray-600 disabled:opacity-30"><ChevronDown className="w-3.5 h-3.5 rotate-180" /></button>
+                        <button onClick={() => moveSection(sectionName, 1)} disabled={sectionIndex === allSections.length - 1} title="Move section down" className="text-gray-400 hover:text-gray-600 disabled:opacity-30"><ChevronDown className="w-3.5 h-3.5" /></button>
+                      </div>
+                      <button onClick={() => setExpandedSection(expandedSection === sectionName ? null : sectionName)} className="flex-1 flex items-center justify-between px-3 py-3 hover:bg-gray-100">
+                        <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide text-left">
+                          {sectionName}
+                          <span className="ml-2 text-gray-400 font-normal normal-case">({sectionFields.filter((f) => f.active).length} visible)</span>
+                        </span>
+                        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${expandedSection === sectionName ? "rotate-180" : ""}`} />
+                      </button>
+                    </div>
                     {expandedSection === sectionName && (
                       <div className="divide-y divide-gray-100">
                         {sectionFields.map((field) => {

@@ -235,6 +235,7 @@ type PatientFillFormRead = {
   patient_name: string
   patient_email: string | null
   patient_phone: string | null
+  visit_date: string | null
   doctor_name: string
   logo_url: string | null
   fields: FieldConfig[]
@@ -247,6 +248,7 @@ type PatientFillFormSubmit = {
   patient_name?: string | null
   patient_email?: string | null
   patient_phone?: string | null
+  visit_date?: string | null
   values: Record<string, unknown>
 }
 
