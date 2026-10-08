@@ -768,8 +768,8 @@ export default function DoctorToDoctorSharePage() {
       </div>
       </div>
 
-      {previewFile && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setPreviewFile(null)}>
+      <ModalExit show={!!previewFile}>{previewFile && (
+        <div className="modal-in fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setPreviewFile(null)}>
           <div className="relative bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
               <h3 className="text-sm font-medium text-gray-900 truncate">{previewFile.file_name}</h3>
@@ -784,7 +784,7 @@ export default function DoctorToDoctorSharePage() {
             </div>
           </div>
         </div>
-      )}
+      )}</ModalExit>
 
       <ModalExit show={showHistory}>{showHistory && <ChangeHistoryModal changes={document.changes} onClose={() => setShowHistory(false)} />}</ModalExit>
 

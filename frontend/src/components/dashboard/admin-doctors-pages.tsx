@@ -6,6 +6,7 @@ import { createDoctor, deleteDoctor, listDoctors } from "@/lib/api-client"
 import type { AdminDoctor } from "@/lib/api-types"
 import { isAdmin } from "@/lib/auth-routing"
 import { useAuthStore } from "@/stores/auth-store"
+import { ModalExit } from "@/components/ui/modal-exit"
 
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : "Something went wrong."
@@ -58,7 +59,6 @@ function AddDoctorModal({
     setPassword("")
   }, [isOpen])
 
-  if (!isOpen) return null
 
   async function handleSubmit() {
     if (!email.trim() || !fullName.trim() || password.length < 8) {
@@ -78,7 +78,8 @@ function AddDoctorModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <ModalExit show={isOpen}>{isOpen && (
+    <div className="modal-in fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div className="w-full max-w-md rounded-2xl bg-white overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
           <h3 className="text-base font-semibold text-gray-900">Add Doctor</h3>
@@ -129,6 +130,7 @@ function AddDoctorModal({
         </div>
       </div>
     </div>
+    )}</ModalExit>
   )
 }
 

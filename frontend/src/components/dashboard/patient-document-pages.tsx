@@ -1520,8 +1520,6 @@ function DesktopRecommendedPopup() {
     setOpen(true)
   }, [])
 
-  if (!open) return null
-
   const close = () => {
     if (dontShowAgain) {
       try {
@@ -1532,6 +1530,7 @@ function DesktopRecommendedPopup() {
   }
 
   return (
+    <ModalExit show={open}>{open && (
     <div className="modal-in fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
         <h3 className="text-lg font-bold text-gray-900">Better on Desktop</h3>
@@ -1558,6 +1557,7 @@ function DesktopRecommendedPopup() {
         </div>
       </div>
     </div>
+    )}</ModalExit>
   )
 }
 
