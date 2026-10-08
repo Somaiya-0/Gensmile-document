@@ -211,6 +211,7 @@ class SharedWithMeDocumentRead(BaseModel):
     share_token: str
     patient_name: str
     owner_name: str
+    logo_url: str | None = None
     visit_date: datetime | None = None
     updated_at: datetime
     last_opened_at: datetime

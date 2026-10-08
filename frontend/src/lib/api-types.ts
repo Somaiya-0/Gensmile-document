@@ -112,6 +112,7 @@ type SharedWithMeDocument = {
   share_token: string
   patient_name: string
   owner_name: string
+  logo_url: string | null
   visit_date: string | null
   updated_at: string
   last_opened_at: string

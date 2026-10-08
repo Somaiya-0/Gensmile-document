@@ -64,9 +64,13 @@ function SharedDocumentsPage() {
                   <tr key={doc.share_token} onClick={() => navigate(`/doctor-to-doctor/documents/${doc.share_token}`)} className="cursor-pointer transition-colors hover:bg-gray-50">
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-xs font-semibold text-blue-600">
-                          {doc.patient_name?.[0]?.toUpperCase()}
-                        </div>
+                        {doc.logo_url ? (
+                          <img src={doc.logo_url} alt="" className="h-9 w-9 shrink-0 rounded-lg border border-gray-200 object-cover" />
+                        ) : (
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-xs font-semibold text-blue-600">
+                            {doc.patient_name?.[0]?.toUpperCase()}
+                          </div>
+                        )}
                         <span className="font-medium text-gray-900">{doc.patient_name || "—"}</span>
                       </div>
                     </td>

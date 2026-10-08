@@ -75,6 +75,10 @@ async def _doctor_display_name(db: AsyncSession, doc: PatientDocument) -> str:
     )
     # Pages show "Dr. {name}" -- drop a "Dr." the doctor already typed into
     # their own name, or it reads "Dr. Dr. Nilo".
+    return _without_dr(name)
+
+
+def _without_dr(name: str | None) -> str:
     return re.sub(r"^\s*dr(\.\s*|\s+)", "", name or "", flags=re.IGNORECASE).strip()
 
 
@@ -1007,7 +1011,8 @@ async def list_shared_with_me(db: AsyncSession, user: UserAccount) -> list[Share
         SharedWithMeDocumentRead(
             share_token=doc.share_token,
             patient_name=doc.patient_name,
-            owner_name=owner_name or "Unknown doctor",
+            owner_name=_without_dr(owner_name) or "Unknown doctor",
+            logo_url=s3_service.get_presigned_url(doc.logo_key),
             visit_date=doc.visit_date,
             updated_at=doc.updated_at,
             last_opened_at=last_opened_at,
