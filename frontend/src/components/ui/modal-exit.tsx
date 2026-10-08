@@ -29,7 +29,9 @@ export function ModalExit({ show, children }: { show: boolean; children: ReactNo
 
   // The frame between show turning false and the effect above running would
   // otherwise unmount the modal for a flash -- render the closing copy then too.
-  if (show) return <>{children}</>
-  if (!closing && !wasShown.current) return null
-  return <div className="modal-closing contents">{last.current}</div>
+  if (!show && !closing && !wasShown.current) return null
+  // Same wrapper element open and closing: a different wrapper made React
+  // throw the open modal away and remount a fresh copy for the fade-out, so
+  // its state reset (spinners, refetches, blank fields) as it closed.
+  return <div className={show ? "contents" : "modal-closing contents"}>{show ? children : last.current}</div>
 }
