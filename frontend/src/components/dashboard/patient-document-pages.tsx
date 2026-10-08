@@ -294,6 +294,33 @@ function AddFieldModal({
   )
 }
 
+// Copies text, falling back when the async Clipboard API refuses (e.g.
+// "Document is not focused" once a menu has closed or a request finished).
+// Returns false only if the browser blocked both ways.
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    // fall through to the textarea copy
+  }
+  const ta = window.document.createElement("textarea")
+  ta.value = text
+  ta.setAttribute("readonly", "")
+  ta.style.position = "fixed"
+  ta.style.opacity = "0"
+  window.document.body.appendChild(ta)
+  ta.select()
+  let ok = false
+  try {
+    ok = window.document.execCommand("copy")
+  } catch {
+    ok = false
+  }
+  ta.remove()
+  return ok
+}
+
 function useToken(): string {
   const token = useAuthStore((state) => state.accessToken)
   return token ?? ""
@@ -866,7 +893,8 @@ function DocumentDetailModal({
     const dirtyCustomFields: Record<string, unknown> = {}
     for (const key of keys) {
       sent[key] = valueOf(key)
-      if (key in formDataRef.current) payload[key] = sent[key]
+      // A cleared/half-typed date input is "" -- send null ("no date"), not "".
+      if (key in formDataRef.current) payload[key] = key === "visit_date" && sent[key] === "" ? null : sent[key]
       else dirtyCustomFields[key] = sent[key]
     }
     if (Object.keys(dirtyCustomFields).length > 0) payload.custom_fields = dirtyCustomFields
@@ -1003,7 +1031,20 @@ function DocumentDetailModal({
         url = updated.share_url
       }
       if (!url) throw new Error("No share link available.")
-      await navigator.clipboard.writeText(url)
+      if (!(await copyText(url))) {
+        // The link exists -- only copying was blocked, so show it to copy by hand.
+        await Swal.fire({
+          icon: "info",
+          title: "Share link ready",
+          text: "Copy this link:",
+          input: "text",
+          inputValue: url,
+          inputAttributes: { readonly: "true" },
+          confirmButtonText: "Done",
+          didOpen: () => (Swal.getInput() as HTMLInputElement | null)?.select(),
+        })
+        return
+      }
       setShareCopied(audience)
       setTimeout(() => setShareCopied(null), 2000)
     } catch (error) {
@@ -2042,7 +2083,7 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
     const logo = logoFile, files = attachments
     setSaving(true)
     try {
-      const payload = { ...formData, custom_fields: customFields, ...(draftFormFields?.permanent ? { form_config: draftFormFields.fields } : {}) } as PatientDocumentCreate
+      const payload = { ...formData, visit_date: formData.visit_date || null, custom_fields: customFields, ...(draftFormFields?.permanent ? { form_config: draftFormFields.fields } : {}) } as PatientDocumentCreate
       const created = await createPatientDocument(token, payload)
       // Created from Doctor to Doctor: list it there too (Doctor to Patient
       // is on by default). From Doctor to Patient it stays patient-only until

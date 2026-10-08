@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class PatientDocumentBase(BaseModel):
@@ -46,6 +46,12 @@ class PatientDocumentBase(BaseModel):
 
     # Doctor-added fields from the Settings form-builder
     custom_fields: dict = Field(default_factory=dict)
+
+    # A cleared date input arrives as "" -- treat it as "no date", not a 422.
+    @field_validator("visit_date", mode="before", check_fields=False)
+    @classmethod
+    def _blank_visit_date(cls, v: object) -> object:
+        return None if v == "" else v
 
 
 class PatientDocumentCreate(PatientDocumentBase):
@@ -92,6 +98,12 @@ class PatientDocumentUpdate(BaseModel):
     custom_fields: dict | None = None
     is_active: bool | None = None
     fill_enabled: bool | None = None
+
+    # A cleared date input arrives as "" -- treat it as "no date", not a 422.
+    @field_validator("visit_date", mode="before", check_fields=False)
+    @classmethod
+    def _blank_visit_date(cls, v: object) -> object:
+        return None if v == "" else v
 
 
 class PatientDocumentFileRead(BaseModel):
@@ -194,6 +206,12 @@ class PatientFillFormSubmit(BaseModel):
     patient_phone: str | None = Field(default=None, max_length=50)
     visit_date: datetime | None = None
     values: dict = Field(default_factory=dict)
+
+    # A cleared date input arrives as "" -- treat it as "no date", not a 422.
+    @field_validator("visit_date", mode="before", check_fields=False)
+    @classmethod
+    def _blank_visit_date(cls, v: object) -> object:
+        return None if v == "" else v
 
 
 class LogoUploadResponse(BaseModel):
