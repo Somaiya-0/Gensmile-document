@@ -5,7 +5,7 @@ import {
   Plus, Search, Save, Share2, Upload, FileText, Image as ImageIcon, X,
   Loader2, Check, Printer, Pencil, Trash2,
   Settings, ChevronRight, FileArchive, FileSpreadsheet, ChevronDown,
-  Download, GripVertical, Users, Stethoscope, MoreVertical, LogOut, History,
+  Download, GripVertical, RotateCcw, Users, Stethoscope, MoreVertical, LogOut, History,
 } from "lucide-react"
 
 import {
@@ -346,6 +346,21 @@ async function downloadAllAsZip(documentId: string, token: string, _files: Patie
 
 // ─── Form Settings Modal (per-document or doctor default) ─────────────────
 
+function insertRestored(current: FieldConfig[], toRestore: FieldConfig[], deleted: { field: FieldConfig; index: number }[]): FieldConfig[] {
+  const next = [...current]
+  for (const f of toRestore) {
+    if (next.some((x) => x.key === f.key)) continue
+    const entry = deleted.find((d) => d.field.key === f.key)
+    let at = entry ? Math.min(entry.index, next.length) : -1
+    if (at < 0) {
+      const last = next.map((x) => x.section || "Overview").lastIndexOf(f.section || "Overview")
+      at = last >= 0 ? last + 1 : next.length
+    }
+    next.splice(at, 0, f)
+  }
+  return next
+}
+
 export function FormSettingsModal({
   isOpen, onClose, documentId, isDefault = false, shareToken = null, initialFields, onApply,
 }: {
@@ -362,7 +377,7 @@ export function FormSettingsModal({
   // e.g. the New Document form, or changes already applied "just for now".
   initialFields?: FieldConfig[]
   // Per-form mode: edits stay local while the modal is open. On close, if
-  // anything changed, the doctor picks "Save to this form" (permanent) or
+  // anything changed, the doctor picks "Save to current form" (permanent) or
   // "Just for now" (this session only), and this receives the result. The
   // caller saves it to THIS form only -- never the default or other forms.
   onApply?: (fields: FieldConfig[], permanent: boolean) => void | Promise<void>
@@ -377,6 +392,12 @@ export function FormSettingsModal({
   const fieldsRef = useRef(fields)
   fieldsRef.current = fields
   const changedRef = useRef(false)
+  // Fields deleted while this editor is open (newest first, with where they
+  // were) plus the default form's fields this form no longer has -- both
+  // offered under "Removed fields" so a deleted field or whole section can
+  // be put back.
+  const [deletedFields, setDeletedFields] = useState<{ field: FieldConfig; index: number }[]>([])
+  const [defaultFields, setDefaultFields] = useState<FieldConfig[]>([])
   // Read at open time through a ref: loadFields is memoized, and capturing
   // the prop directly froze it at its first value (the New Document form
   // mounts this before the default form has loaded, so it opened empty).
@@ -409,6 +430,11 @@ export function FormSettingsModal({
   useEffect(() => {
     if (!isOpen) return
     changedRef.current = false
+    setDeletedFields([])
+    setDefaultFields([])
+    // The default form is only a source of fields to restore; it's never
+    // written here. A visiting doctor's default isn't this form's, so skip.
+    if (!isDefault && !shareToken) getFormConfig(token).then((d) => setDefaultFields(d.fields)).catch(() => {})
     loadFields()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
@@ -424,7 +450,7 @@ export function FormSettingsModal({
       text: "They only affect this form -- the default form and other forms stay as they are.",
       showDenyButton: true,
       showCancelButton: true,
-      confirmButtonText: "Save to this form",
+      confirmButtonText: "Save to current form",
       denyButtonText: "Just for now",
       denyButtonColor: "#6b7280",
       cancelButtonText: "Keep editing",
@@ -489,7 +515,16 @@ export function FormSettingsModal({
       confirmButtonColor: "#dc2626",
     })
     if (!confirmed.isConfirmed) return
+    const index = fieldsRef.current.findIndex((f) => f.key === field.key)
+    setDeletedFields((prev) => [{ field, index }, ...prev.filter((d) => d.field.key !== field.key)])
     void applyAndPersist((current) => current.filter((f) => f.key !== field.key))
+  }
+
+  // Puts fields back where they were deleted from; fields only in the
+  // default form go after the last field of their section, else at the end.
+  const restoreFields = (toRestore: FieldConfig[]) => {
+    void applyAndPersist((current) => insertRestored(current, toRestore, deletedFields))
+    setDeletedFields((prev) => prev.filter((d) => !toRestore.some((f) => f.key === d.field.key)))
   }
 
   const addField = (draft: NewFieldDraft) => {
@@ -533,6 +568,14 @@ export function FormSettingsModal({
   }
 
 
+  const currentKeys = new Set(fields.map((f) => f.key))
+  const restorable = [
+    ...deletedFields.map((d) => d.field),
+    ...defaultFields.filter((f) => !deletedFields.some((d) => d.field.key === f.key)),
+  ].filter((f) => !currentKeys.has(f.key))
+  const restorableSections: Record<string, FieldConfig[]> = {}
+  for (const f of restorable) (restorableSections[f.section || "Overview"] ??= []).push(f)
+
   const sections: Record<string, FieldConfig[]> = {}
   fields.forEach((field) => {
     const section = field.section || "Overview"
@@ -558,10 +601,16 @@ export function FormSettingsModal({
             <div className="flex justify-center p-8"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
           ) : (
             <>
-              <div className="flex justify-between items-center">
+              <div className="flex items-center gap-2">
                 <button onClick={() => setShowAddField(true)} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-medium hover:bg-blue-700">
                   <Plus className="w-4 h-4" /> Add New Field
                 </button>
+                {deletedFields.length > 0 && (
+                  <button onClick={() => restoreFields([deletedFields[0].field])} title={`Restore "${deletedFields[0].field.label}"`} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-50">
+                    <RotateCcw className="w-3.5 h-3.5" /> Undo delete
+                  </button>
+                )}
+                <span className="flex-1" />
                 {saving && (
                   <span className="inline-flex items-center gap-1.5 text-xs text-gray-400">
                     <Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…
@@ -621,6 +670,34 @@ export function FormSettingsModal({
                   </div>
                 ))}
               </div>
+              {restorable.length > 0 && (
+                <div className="rounded-xl border border-dashed border-gray-300 p-4 space-y-3">
+                  <div>
+                    <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Removed fields</h4>
+                    <p className="text-[11px] text-gray-400">Put back anything removed from this form.</p>
+                  </div>
+                  {Object.entries(restorableSections).map(([sectionName, sectionFields]) => (
+                    <div key={sectionName} className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+                          {sectionName}{!sections[sectionName] && <span className="ml-1.5 normal-case font-normal text-gray-400">(section removed)</span>}
+                        </span>
+                        {(sectionFields.length > 1 || !sections[sectionName]) && (
+                          <button onClick={() => restoreFields(sectionFields)} className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:underline">
+                            <RotateCcw className="w-3 h-3" /> Restore section
+                          </button>
+                        )}
+                      </div>
+                      {sectionFields.map((field) => (
+                        <div key={field.key} className="flex items-center justify-between gap-2 rounded-lg bg-gray-50 px-3 py-2">
+                          <span className="text-sm text-gray-600 truncate">{field.label}</span>
+                          <button onClick={() => restoreFields([field])} className="shrink-0 text-xs font-medium text-blue-600 hover:underline">Restore</button>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           )}
         </div>
@@ -942,7 +1019,7 @@ function DocumentDetailModal({
   const handlePrint = () => window.open(`/documents/print/${document.id}`, "_blank")
 
   // "Just for now" layout from Edit Form: shown until this form is closed,
-  // never saved. Saved ("Save to this form") layouts live on the document.
+  // never saved. Saved ("Save to current form") layouts live on the document.
   const [formOverride, setFormOverride] = useState<FieldConfig[] | null>(null)
   const fieldConfigs = formOverride ?? document.form_config ?? []
   const groupedFields = fieldConfigs.filter((f) => f.active).reduce<Record<string, FieldConfig[]>>((acc, f) => {
@@ -1854,7 +1931,7 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
   const createRunRef = useRef(0)
   const [formFields, setFormFields] = useState<FieldConfig[]>([])
   // Form Settings changes made from the New Document form: they only shape
-  // this one new document ("Save to this form" also stores the layout on it
+  // this one new document ("Save to current form" also stores the layout on it
   // when created), then the form goes back to the default.
   const [draftFormFields, setDraftFormFields] = useState<{ fields: FieldConfig[]; permanent: boolean } | null>(null)
   const [formData, setFormData] = useState<Record<string, unknown>>({ visit_date: todayISO() })
