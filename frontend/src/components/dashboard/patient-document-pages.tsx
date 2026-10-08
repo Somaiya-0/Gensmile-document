@@ -166,7 +166,11 @@ function AddFieldModal({
     setType("text")
     setCustomSection(false)
     setSection(existingSections[0] || "Other")
-  }, [isOpen, existingSections])
+    // Reset only when the dialog opens -- existingSections is a new array on
+    // every parent render (live updates, auto-refresh, tab focus), which
+    // used to snap the picked section back to the first one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen])
 
 
   const resolvedSection = section.trim() || "Other"
@@ -396,11 +400,14 @@ export function FormSettingsModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentId, isDefault, shareToken, token])
 
+  // Load once per open. Re-running on a new loadFields (e.g. a refreshed
+  // sign-in token) would wipe unsaved edits and collapse the sections.
   useEffect(() => {
     if (!isOpen) return
     changedRef.current = false
     loadFields()
-  }, [isOpen, loadFields])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen])
 
   const handleClose = async () => {
     if (isDefault || !changedRef.current) {
