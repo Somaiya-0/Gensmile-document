@@ -1,3 +1,4 @@
+import re
 import copy
 import logging
 import secrets
@@ -72,7 +73,9 @@ async def _doctor_display_name(db: AsyncSession, doc: PatientDocument) -> str:
         .join(DoctorProfile, DoctorProfile.user_id == UserAccount.id)
         .where(DoctorProfile.id == doc.doctor_profile_id)
     )
-    return name or ""
+    # Pages show "Dr. {name}" -- drop a "Dr." the doctor already typed into
+    # their own name, or it reads "Dr. Dr. Nilo".
+    return re.sub(r"^\s*dr(\.\s*|\s+)", "", name or "", flags=re.IGNORECASE).strip()
 
 
 def _file_read(f: PatientDocumentFile) -> PatientDocumentFileRead:
