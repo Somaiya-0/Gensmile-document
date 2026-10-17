@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { History, Loader2, X } from "lucide-react"
 
 import type { PatientDocumentChangeLog } from "@/lib/api-types"
@@ -9,6 +10,16 @@ const TYPE_BADGES: Record<PatientDocumentChangeLog["change_type"], [string, stri
   sharing: ["Sharing", "bg-green-50 text-green-700"],
   document: ["Document", "bg-gray-100 text-gray-700"],
 }
+
+// Name the backend gives every edit made through the patient's self-fill link.
+const PATIENT_NAME = "Patient (self-fill link)"
+
+const FILTERS: [string, (c: PatientDocumentChangeLog) => boolean][] = [
+  ["All", () => true],
+  ["By patient", (c) => c.changed_by_name === PATIENT_NAME],
+  ["By doctor", (c) => c.changed_by_name !== PATIENT_NAME && c.change_type !== "sharing"],
+  ["Shared by doctor", (c) => c.change_type === "sharing"],
+]
 
 function formatDateTime(dateString: string) {
   return new Date(dateString).toLocaleString("en-US", {
@@ -23,28 +34,41 @@ export function ChangeHistoryModal({
   changes: PatientDocumentChangeLog[] | null // null = still loading
   onClose: () => void
 }) {
+  const [filter, setFilter] = useState(0)
+  const shown = changes?.filter(FILTERS[filter][1]) ?? null
   return (
     <div className="modal-in fixed inset-0 z-[85] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div className="relative bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[80dvh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="shrink-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
           <div>
             <h3 className="text-base font-semibold text-gray-900">History</h3>
-            <p className="text-xs text-gray-500">Who changed what, and when</p>
+            <p className="text-xs text-gray-500">Who changed or shared what, and when</p>
           </div>
           <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100" aria-label="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
+        <div className="shrink-0 flex gap-1.5 overflow-x-auto px-6 pt-3">
+          {FILTERS.map(([label], i) => (
+            <button
+              key={label}
+              onClick={() => setFilter(i)}
+              className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-medium ${filter === i ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="overflow-y-auto overscroll-none px-6 py-4 space-y-3">
-          {changes === null ? (
+          {shown === null ? (
             <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
-          ) : changes.length === 0 ? (
+          ) : shown.length === 0 ? (
             <div className="text-center py-8">
               <History className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-              <p className="text-sm text-gray-500">No changes recorded yet.</p>
+              <p className="text-sm text-gray-500">{filter === 0 ? "No changes recorded yet." : "Nothing here yet."}</p>
             </div>
           ) : (
-            changes.map((change) => {
+            shown.map((change) => {
               const [badge, badgeClass] = TYPE_BADGES[change.change_type] ?? [change.change_type, "bg-gray-100 text-gray-700"]
               return (
                 <div key={change.id} className="rounded-xl border border-gray-200 px-3.5 py-2.5">
@@ -54,10 +78,16 @@ export function ChangeHistoryModal({
                   </div>
                   <p className="text-xs text-gray-600 mt-1">
                     <span className={`inline-block mr-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${badgeClass}`}>{badge}</span>
-                    {change.field_label}:{" "}
-                    <span className="text-gray-500">{change.old_value ?? "—"}</span>
-                    {" → "}
-                    <span className="text-gray-900 font-medium">{change.new_value ?? "—"}</span>
+                    {change.field_label === "Shared with" ? (
+                      <>Shared with <span className="text-gray-900 font-medium">{change.new_value}</span></>
+                    ) : (
+                      <>
+                        {change.field_label}:{" "}
+                        <span className="text-gray-500">{change.old_value ?? "—"}</span>
+                        {" → "}
+                        <span className="text-gray-900 font-medium">{change.new_value ?? "—"}</span>
+                      </>
+                    )}
                   </p>
                 </div>
               )

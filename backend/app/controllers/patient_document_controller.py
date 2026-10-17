@@ -973,10 +973,32 @@ async def _record_shared_access(db: AsyncSession, doc: PatientDocument, user: Us
     now = utc_now()
     if access is not None and access.share_token == doc.share_token and (now - access.last_opened_at).total_seconds() <= 300:
         return
+    first_open = access is None or access.share_token != doc.share_token
     try:
         # Savepoint: if two tabs insert at the same instant, only this row is
         # rolled back -- not the document the caller is about to read.
         async with db.begin_nested():
+            if first_open:
+                # History: "<who turned this link on> shared with <this doctor>".
+                sharer = (await db.execute(
+                    select(PatientDocumentChangeLog.changed_by_user_id, PatientDocumentChangeLog.changed_by_name)
+                    .where(
+                        PatientDocumentChangeLog.document_id == doc.id,
+                        PatientDocumentChangeLog.change_type == "sharing",
+                        PatientDocumentChangeLog.field_label == "Doctor-to-doctor link",
+                        PatientDocumentChangeLog.new_value.in_(["Yes", "New link generated"]),
+                    )
+                    .order_by(PatientDocumentChangeLog.created_at.desc())
+                    .limit(1)
+                )).first()
+                db.add(PatientDocumentChangeLog(
+                    document_id=doc.id,
+                    changed_by_user_id=sharer[0] if sharer else None,
+                    changed_by_name=sharer[1] if sharer else "Document owner",
+                    change_type="sharing",
+                    field_label="Shared with",
+                    new_value=user.full_name,
+                ))
             if access is None:
                 db.add(PatientDocumentSharedAccess(document_id=doc.id, user_id=user.id, share_token=doc.share_token, last_opened_at=now))
             else:
