@@ -404,8 +404,8 @@ export function FormSettingsModal({
   // e.g. the New Document form, or changes already applied "just for now".
   initialFields?: FieldConfig[]
   // Per-form mode: edits stay local while the modal is open. On close, if
-  // anything changed, the doctor picks "Save to current form" (permanent) or
-  // "Just for now" (this session only), and this receives the result. The
+  // anything changed, the doctor picks "Save to this document" (permanent) or
+  // "Just this once" (this session only), and this receives the result. The
   // caller saves it to THIS form only -- never the default or other forms.
   onApply?: (fields: FieldConfig[], permanent: boolean) => void | Promise<void>
 }) {
@@ -473,12 +473,12 @@ export function FormSettingsModal({
     }
     const choice = await Swal.fire({
       icon: "question",
-      title: "Keep your changes?",
-      html: "Your changes only apply to this form. Other forms won't change.<br><br><b>Save to current form</b> keeps them.<br><b>Just for now</b> uses them until you close this form.",
+      title: "Save these form changes?",
+      html: "These changes are for <b>this document only</b> -- your default form stays the same.<br><br><b>Save to this document</b> keeps the changed form on this document permanently.<br><b>Just this once</b> uses the changes now and drops them when you close the form.",
       showDenyButton: true,
       showCancelButton: true,
-      confirmButtonText: "Save to current form",
-      denyButtonText: "Just for now",
+      confirmButtonText: "Save to this document",
+      denyButtonText: "Just this once",
       denyButtonColor: "#6b7280",
       cancelButtonText: "Keep editing",
     })
@@ -1074,8 +1074,8 @@ function DocumentDetailModal({
 
   const handlePrint = () => window.open(`/documents/print/${document.id}`, "_blank")
 
-  // "Just for now" layout from Edit Form: shown until this form is closed,
-  // never saved. Saved ("Save to current form") layouts live on the document.
+  // "Just this once" layout from Edit Form: shown until this form is closed,
+  // never saved. Saved ("Save to this document") layouts live on the document.
   const [formOverride, setFormOverride] = useState<FieldConfig[] | null>(null)
   const fieldConfigs = formOverride ?? document.form_config ?? []
   const groupedFields = fieldConfigs.filter((f) => f.active).reduce<Record<string, FieldConfig[]>>((acc, f) => {
@@ -1987,7 +1987,7 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
   const createRunRef = useRef(0)
   const [formFields, setFormFields] = useState<FieldConfig[]>([])
   // Form Settings changes made from the New Document form: they only shape
-  // this one new document ("Save to current form" also stores the layout on it
+  // this one new document ("Save to this document" also stores the layout on it
   // when created), then the form goes back to the default.
   const [draftFormFields, setDraftFormFields] = useState<{ fields: FieldConfig[]; permanent: boolean } | null>(null)
   const [formData, setFormData] = useState<Record<string, unknown>>({ visit_date: todayISO() })
