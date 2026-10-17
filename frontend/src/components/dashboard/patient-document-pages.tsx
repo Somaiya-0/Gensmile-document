@@ -1203,7 +1203,7 @@ function DocumentDetailModal({
                   }}
                   className="cursor-pointer gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-900"
                 >
-                  <History className="w-4 h-4 text-blue-600" /> Change History
+                  <History className="w-4 h-4 text-blue-600" /> History
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handlePrint} className="cursor-pointer gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-900">
                   <Printer className="w-4 h-4 text-blue-600" /> Print

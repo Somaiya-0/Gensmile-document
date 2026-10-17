@@ -600,7 +600,7 @@ export default function DoctorToDoctorSharePage() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="min-w-[200px] rounded-xl border-gray-200 p-1.5">
                   <DropdownMenuItem onClick={() => setShowHistory(true)} className="cursor-pointer gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-900">
-                    <History className="w-4 h-4 text-blue-600" /> Change History
+                    <History className="w-4 h-4 text-blue-600" /> History
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setShowFormSettings(true)} className="cursor-pointer gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-900">
                     <Settings className="w-4 h-4 text-blue-600" /> Edit Form

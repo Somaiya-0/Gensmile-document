@@ -28,7 +28,7 @@ export function ChangeHistoryModal({
       <div className="relative bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[80dvh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="shrink-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
           <div>
-            <h3 className="text-base font-semibold text-gray-900">Change History</h3>
+            <h3 className="text-base font-semibold text-gray-900">History</h3>
             <p className="text-xs text-gray-500">Who changed what, and when</p>
           </div>
           <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100" aria-label="Close">
