@@ -637,10 +637,11 @@ export default function DoctorToDoctorSharePage() {
 
         <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
           <h2 className="text-sm font-semibold text-gray-900">Patient Information</h2>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <PatientInfoField label="Full Name" value={(values.patient_name as string) || ""} editing={editing} onChange={(v) => handleValueChange("patient_name", v)} />
             <PatientInfoField label="Email" type="email" value={(values.patient_email as string) || ""} editing={editing} onChange={(v) => handleValueChange("patient_email", v)} />
             <PatientInfoField label="Phone" type="tel" value={(values.patient_phone as string) || ""} editing={editing} onChange={(v) => handleValueChange("patient_phone", v)} />
+            <PatientInfoField label="Visit Date" type="date" value={(values.visit_date as string) || ""} editing={editing} onChange={(v) => handleValueChange("visit_date", v)} />
           </div>
         </div>
 
