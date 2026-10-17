@@ -2244,7 +2244,7 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
         <div className="w-full min-w-0">
           <div className="mb-5">
             <h1 className="text-lg font-semibold text-gray-900">Document</h1>
-            <p className="text-sm text-gray-500">Create or share a document on the left -- Doctor to Doctor and Doctor to Patient documents are listed on the right.</p>
+            <p className="text-sm text-gray-500">The form on the left is your default form -- fill it in to create or share a document. Doctor to Doctor and Doctor to Patient documents are listed on the right.</p>
           </div>
 
           <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
