@@ -2583,20 +2583,19 @@ export function PatientDocumentSettingsPage() {
 // ============================================
 
 const SECTION_FIELDS: { title: string; fields: [string, string][] }[] = [
-  { title: "Chief Concern", fields: [["chief_concern", "Chief Concern"]] },
+  { title: "Overview", fields: [["chief_concern", "Chief Concern"], ["last_dds_visit", "Last DDS Visit"]] },
   {
     title: "CBCT Information",
     fields: [
-      ["last_dds_visit", "Last DDS Visit"],
       ["cbct_taken", "CBCT Taken"],
-      ["req_radiologist", "Requesting Radiologist"],
-      ["exam_salivary_ph", "Salivary pH"],
+      ["req_radiologist", "Req Radiologist"],
+      ["exam_salivary_ph", "Exam Salivary pH"],
       ["recommend_salivary_test", "Recommend Salivary Test"],
-      ["cbct_notes", "Notes"],
+      ["cbct_notes", "CBCT Notes"],
     ],
   },
   {
-    title: "Third Molars",
+    title: "Third Molars Areas",
     fields: [
       ["third_molar_ll", "LL"],
       ["third_molar_lr", "LR"],
@@ -2619,7 +2618,7 @@ const SECTION_FIELDS: { title: string; fields: [string, string][] }[] = [
   {
     title: "Periodontal",
     fields: [
-      ["periodontal_condition", "Condition"],
+      ["periodontal_condition", "Periodontal Condition"],
       ["tx_recommendations", "Tx Recommendations"],
       ["md_referral", "MD Referral"],
       ["blood_test", "Blood Test"],
