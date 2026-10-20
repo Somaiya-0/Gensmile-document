@@ -151,7 +151,7 @@ function PatientInfoField({
           className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-500 outline-none"
         />
       ) : (
-        <div className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-700 min-h-[46px] flex items-center">
+        <div className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-700 min-h-[46px] flex items-center min-w-0 [overflow-wrap:anywhere]">
           {value || "—"}
         </div>
       )}

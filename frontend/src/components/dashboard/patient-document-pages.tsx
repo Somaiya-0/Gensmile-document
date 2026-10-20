@@ -1085,7 +1085,7 @@ function DocumentDetailModal({
     return acc
   }, {})
 
-  const displayBoxClass = "w-full px-3 py-2 rounded-lg border border-gray-200 text-sm bg-gray-50 text-gray-900 min-h-[38px] flex items-center"
+  const displayBoxClass = "w-full px-3 py-2 rounded-lg border border-gray-200 text-sm bg-gray-50 text-gray-900 min-h-[38px] flex items-center [overflow-wrap:anywhere]"
   const displayTextareaClass = "w-full px-3 py-2 rounded-lg border border-gray-200 text-sm bg-gray-50 text-gray-900 min-h-[76px] whitespace-pre-wrap"
 
   const renderCoreField = (key: string, label: string, type = "text") => {
