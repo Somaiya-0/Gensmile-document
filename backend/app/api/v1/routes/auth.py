@@ -17,10 +17,6 @@ from app.controllers.auth_controller import (
     reset_password,
     refresh_access_token,
 )
-from app.controllers.email_verification_controller import (
-    resend_verification_email,
-    verify_email,
-)
 from app.models import UserAccount
 from app.schemas.auth import (
     CurrentUserResponse,
@@ -193,34 +189,3 @@ async def me(
     current_user: Annotated[UserAccount, Depends(get_current_user)],
 ) -> CurrentUserResponse:
     return build_current_user_response(current_user)
-
-
-@router.post(
-    "/verify-email",
-    status_code=status.HTTP_200_OK,
-    summary="Verify email address",
-    description=(
-        "Confirm an email address using the token sent to the user after onboarding. "
-        "The token is single-use and expires after the configured number of hours (default 24)."
-    ),
-    responses={400: {"description": "Token is invalid or expired"}},
-)
-async def verify_email_route(
-    token: str,
-    db: Annotated[AsyncSession, Depends(get_db_session)],
-) -> dict:
-    return await verify_email(db=db, token=token)
-
-
-@router.post(
-    "/resend-verification",
-    status_code=status.HTTP_200_OK,
-    summary="Resend verification email",
-    description="Re-send the email verification link for the authenticated user.",
-    responses=_401,
-)
-async def resend_verification_route(
-    current_user: Annotated[UserAccount, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db_session)],
-) -> dict:
-    return await resend_verification_email(db=db, user=current_user)

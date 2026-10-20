@@ -1,4 +1,5 @@
-const DIRECT_API_BASE_URL = "https://api.gensmile.ai/api/v1"
+// ShareTheFile's own API (the documents backend on EC2), never GenSmile's.
+const DIRECT_API_BASE_URL = "https://98-80-179-210.sslip.io/api/v1"
 
 // Auth store registers this so apiRequest can auto-refresh on 401
 type TokenRefresher = () => Promise<string | null>
@@ -21,12 +22,12 @@ class ApiError extends Error {
 
 function getApiBaseUrl() {
   // No server-side rewrite proxy in a Vite SPA — call the backend directly.
-  // The backend's CORS allowlist (app/main.py) already covers gensmile.ai and
+  // The backend's CORS allowlist (app/main.py) covers sharethefile.com and
   // localhost:3000, which is why the Vite dev server is pinned to port 3000.
   // `||` (not `??`) is deliberate: an env var present but left blank on the
   // host (empty string, not unset) must still fall back to the default --
   // otherwise every request silently becomes relative to the current page
-  // origin instead of the API (e.g. a 405 posting to www.gensmile.ai/auth/login).
+  // origin instead of the API (e.g. a 405 posting to sharethefile.com/auth/login).
   return import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") || DIRECT_API_BASE_URL
 }
 

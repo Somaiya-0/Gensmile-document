@@ -565,8 +565,9 @@ export default function DoctorToDoctorSharePage() {
 
       <div className="screen-only">
       <div className="max-w-6xl mx-auto space-y-6">
-        <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-          <div className="flex items-start gap-4">
+        <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6 shadow-sm">
+          {/* Wraps on phones: the action buttons drop below instead of squeezing the title. */}
+          <div className="flex flex-wrap items-start gap-4">
             {document.logo_url ? (
               <img src={document.logo_url} alt="Clinic Logo" className="w-14 h-14 rounded-xl border border-gray-200 object-cover shrink-0" />
             ) : (
@@ -574,8 +575,8 @@ export default function DoctorToDoctorSharePage() {
                 <FileText className="w-6 h-6 text-gray-400" />
               </div>
             )}
-            <div className="flex-1 min-w-0">
-              <h1 className="text-xl font-semibold text-gray-900">Shared Patient Document</h1>
+            <div className="flex-1 min-w-[12rem]">
+              <h1 className="text-lg sm:text-xl font-semibold text-gray-900">Shared Patient Document</h1>
               <p className="text-sm text-gray-600 mt-1">{document.patient_name || "Patient"}</p>
 
               <div className="flex flex-wrap items-center gap-4 mt-3">
@@ -591,7 +592,7 @@ export default function DoctorToDoctorSharePage() {
                 )}
               </div>
             </div>
-            <div className="shrink-0 flex items-center gap-2">
+            <div className="shrink-0 ml-auto flex items-center gap-2">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button type="button" title="More options" className="p-2.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50">

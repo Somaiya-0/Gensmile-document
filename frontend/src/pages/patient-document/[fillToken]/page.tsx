@@ -186,7 +186,9 @@ export default function PatientFillFormPage() {
         patient_email: contact.patient_email,
         patient_phone: contact.patient_phone,
         visit_date: contact.visit_date || null,
-        values,
+        // Only what the patient changed -- sending every value back would
+        // overwrite anything the doctor edited since this page loaded.
+        values: Object.fromEntries(Object.entries(values).filter(([key]) => touchedRef.current.has(key))),
       })
       setForm(data)
       setSubmitted(true)
@@ -423,10 +425,12 @@ export default function PatientFillFormPage() {
               <div key={section} className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
                 <h2 className="text-sm font-semibold text-gray-900">{section}</h2>
                 {fields.map((field) => (
-                  <div key={field.key}>
+                  // Fields the doctor didn't mark "Patient can fill" are shown read-only.
+                  <fieldset key={field.key} disabled={!field.patient_editable} className="min-w-0 [&_input:disabled]:bg-gray-50 [&_textarea:disabled]:bg-gray-50 [&_select:disabled]:bg-gray-50">
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">
                       {field.label}
-                      {field.required && <span className="text-red-500"> *</span>}
+                      {field.required && field.patient_editable && <span className="text-red-500"> *</span>}
+                      {!field.patient_editable && <span className="ml-1.5 text-xs font-normal text-gray-400">(filled in by your doctor)</span>}
                     </label>
 
                     {field.type === "checkbox" ? (
@@ -472,7 +476,7 @@ export default function PatientFillFormPage() {
                         className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
                       />
                     )}
-                  </div>
+                  </fieldset>
                 ))}
               </div>
             ))}

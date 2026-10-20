@@ -1303,7 +1303,9 @@ async def submit_patient_fill_document(
         except Exception:
             config_fields = []
 
-    editable_by_key = {f["key"]: f for f in config_fields if f.get("active")}
+    # Only fields the doctor marked "Patient can fill" -- the rest are shown
+    # read-only on the patient's link and must not be writable through it.
+    editable_by_key = {f["key"]: f for f in config_fields if f.get("active") and f.get("patient_editable")}
 
     custom_fields = dict(doc.custom_fields or {})
     for key, value in payload.values.items():

@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import HTTPException, UploadFile, status
+from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,8 +8,6 @@ from app.models import DoctorProfile, UserAccount, UserRole
 from app.models.doctor_form_config import DEFAULT_FORM_FIELDS, DoctorFormConfig
 from app.models.staff import StaffMember
 from app.schemas.form_config import FormConfigUpdate
-from app.schemas.patient_document import LogoUploadResponse
-from app.services import s3_service
 
 
 async def get_or_create_form_config_for_doctor(
@@ -77,25 +75,3 @@ async def update_form_config(
     await db.commit()
     await db.refresh(config)
     return config
-
-
-async def upload_default_logo(
-    db: AsyncSession, user: UserAccount, file: UploadFile
-) -> LogoUploadResponse:
-    """Set the doctor-wide default logo, applied to every new patient
-    document going forward (a document can still be given its own logo,
-    which overrides this default for that one document only)."""
-    config = await get_or_create_form_config(db, user)
-
-    key, _content_type, _size = await s3_service.upload_file_to_s3(
-        file, prefix="logos", allowed_types=s3_service.ALLOWED_LOGO_TYPES
-    )
-
-    old_key = config.logo_key
-    config.logo_key = key
-    await db.commit()
-
-    if old_key:
-        await s3_service.delete_file_from_s3(old_key)
-
-    return LogoUploadResponse(logo_url=s3_service.get_presigned_url(key))

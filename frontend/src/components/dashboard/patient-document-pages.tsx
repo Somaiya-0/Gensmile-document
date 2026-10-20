@@ -1861,7 +1861,7 @@ function DocumentListSection({
                 <tr className="border-b border-gray-100 text-left text-xs font-medium uppercase tracking-wide text-gray-400">
                   <th className="px-5 py-3">Patient</th>
                   <th className="px-5 py-3">Status</th>
-                  <th className="px-5 py-3">Updated</th>
+                  <th className="hidden px-5 py-3 sm:table-cell">Updated</th>
                   <th className="px-5 py-3" />
                 </tr>
               </thead>
@@ -1881,6 +1881,8 @@ function DocumentListSection({
                           )}
                           <div className="min-w-0">
                             <span className="font-medium text-gray-900">{doc.patient_name}</span>
+                            {/* Phones: the Updated column is hidden, so the date goes here. */}
+                            <p className="text-xs text-gray-500 sm:hidden">{new Date(doc.updated_at).toLocaleDateString()}</p>
                             {uploads[doc.id] && <UploadBar progress={uploads[doc.id]} className="mt-1 w-40" />}
                           </div>
                         </div>
@@ -1890,7 +1892,7 @@ function DocumentListSection({
                           <span className="h-1.5 w-1.5 rounded-full bg-current" />{status.label}
                         </span>
                       </td>
-                      <td className="px-5 py-3 text-gray-500">{new Date(doc.updated_at).toLocaleDateString()}</td>
+                      <td className="hidden px-5 py-3 text-gray-500 sm:table-cell">{new Date(doc.updated_at).toLocaleDateString()}</td>
                       <td className="px-5 py-3 text-right"><ChevronRight className="inline-block h-4 w-4 text-gray-300" /></td>
                     </tr>
                   )
@@ -2244,7 +2246,11 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
         <div className="w-full min-w-0">
           <div className="mb-5">
             <h1 className="text-lg font-semibold text-gray-900">Document</h1>
-            <p className="text-sm text-gray-500">The form on the left is your default form -- fill it in to create or share a document. Doctor to Doctor and Doctor to Patient documents are listed on the right.</p>
+            <p className="text-sm text-gray-500">
+              {/* The two columns stack below lg, so "left/right" only reads right on wide screens. */}
+              <span className="hidden lg:inline">The form on the left is your default form -- fill it in to create or share a document. Doctor to Doctor and Doctor to Patient documents are listed on the right.</span>
+              <span className="lg:hidden">The form below is your default form -- fill it in to create or share a document. Doctor to Doctor and Doctor to Patient documents are listed after it.</span>
+            </p>
           </div>
 
           <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
@@ -2347,7 +2353,7 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
             <p className="text-sm text-gray-500">{modeDocuments.length} document{modeDocuments.length === 1 ? "" : "s"}</p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="relative">
+            <div className="relative min-w-0 flex-1 sm:flex-none">
               <Search className="absolute left-3 top-1/2 w-4 h-4 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
@@ -2534,7 +2540,7 @@ export function PatientDocumentSettingsPage() {
 
       <div className="bg-white rounded-2xl border border-gray-200 divide-y divide-gray-100 overflow-x-auto">
         {fields.map((field, index) => (
-          <div key={field.key} className={`flex items-center gap-3 px-4 py-3 min-w-[900px] ${!field.active ? "opacity-50" : ""}`}>
+          <div key={field.key} className={`flex flex-wrap items-center gap-3 px-4 py-3 md:flex-nowrap md:min-w-[900px] ${!field.active ? "opacity-50" : ""}`}>
             <div className="flex flex-col gap-1 shrink-0">
               <button onClick={() => move(index, -1)} className="text-gray-400 hover:text-gray-600" title="Move up">&#9650;</button>
               <button onClick={() => move(index, 1)} className="text-gray-400 hover:text-gray-600" title="Move down">&#9660;</button>
@@ -2543,7 +2549,7 @@ export function PatientDocumentSettingsPage() {
 
             <input type="text" value={field.label} onChange={(e) => updateField(field.key, { label: e.target.value })} className="flex-1 min-w-[160px] px-3 py-1.5 rounded-lg border border-gray-200 text-sm" />
 
-            <input type="text" value={field.section} onChange={(e) => updateField(field.key, { section: e.target.value })} className="w-40 shrink-0 px-3 py-1.5 rounded-lg border border-gray-200 text-sm" placeholder="Section" />
+            <input type="text" value={field.section} onChange={(e) => updateField(field.key, { section: e.target.value })} className="min-w-0 flex-1 md:w-40 md:flex-none md:shrink-0 px-3 py-1.5 rounded-lg border border-gray-200 text-sm" placeholder="Section" />
 
             <select value={field.type} onChange={(e) => updateField(field.key, { type: e.target.value as FieldConfig["type"] })} disabled={field.core} className="w-32 shrink-0 px-3 py-1.5 rounded-lg border border-gray-200 text-sm disabled:bg-gray-50">
               {FIELD_TYPES.map((t) => (

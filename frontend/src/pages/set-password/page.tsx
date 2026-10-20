@@ -142,7 +142,7 @@ function SetPasswordPageContent() {
     await acceptInvitation(validation.data)
     setSuccessMessage("Your account is set up. Taking you to your dashboard...")
     setTimeout(() => {
-      navigate("/doctor")
+      navigate("/") // "/" sends each role to its own dashboard
     }, 1200)
   }
 
