@@ -358,3 +358,8 @@ img {
 @media (prefers-reduced-motion: reduce) {
   .modal-closing .modal-in, .modal-closing .modal-in > :last-child { animation: none; opacity: 0; }
 }
+
+/* Netlify free-plan "Powered by Netlify" badge, injected by Netlify into every page. */
+#nl-badge-frame {
+  display: none !important;
+}
