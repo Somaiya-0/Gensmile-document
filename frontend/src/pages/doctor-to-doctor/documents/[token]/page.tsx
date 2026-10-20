@@ -564,7 +564,7 @@ export default function DoctorToDoctorSharePage() {
       </div>
 
       <div className="screen-only">
-      <div className="max-w-3xl mx-auto space-y-6">
+      <div className="max-w-5xl mx-auto space-y-6">
         <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
           <div className="flex items-start gap-4">
             {document.logo_url ? (
