@@ -83,7 +83,7 @@ function AddDoctorModal({
       <div className="w-full max-w-md rounded-2xl bg-white overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
           <h3 className="text-base font-semibold text-gray-900">Add Doctor</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
+          <button onClick={onClose} aria-label="Close" className="text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
         </div>
         <div className="space-y-3 p-5">
           <div>

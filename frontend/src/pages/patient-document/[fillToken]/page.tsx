@@ -8,6 +8,7 @@ import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { saveBlobAsFile } from "@/lib/utils"
 import type { PatientDocumentFileRead, PatientFillFormRead } from "@/lib/api-types"
 import { YesNoBoxes, yesNoLabel } from "@/components/ui/yes-no"
+import { formatVisitDate } from "@/lib/dates"
 
 const SECTION_ORDER_FALLBACK = 999
 
@@ -88,6 +89,9 @@ export default function PatientFillFormPage() {
           visit_date: data.visit_date ? data.visit_date.split("T")[0] : "",
         }))
         setFiles(data.files || [])
+        // Fields the doctor added, renamed or hid. Only the fields: the logo
+        // URL is re-signed on every fetch and would reload the image each time.
+        setForm((prev) => (prev ? { ...prev, fields: data.fields } : data))
       })
       .catch((error: unknown) => {
         const err = error as { status?: number }
@@ -298,7 +302,7 @@ export default function PatientFillFormPage() {
           </div>
           <div>
             <span>Visit Date</span>
-            {contact.visit_date ? new Date(`${contact.visit_date}T00:00:00`).toLocaleDateString() : "—"}
+            {formatVisitDate(contact.visit_date) || "—"}
           </div>
         </div>
 
@@ -330,7 +334,8 @@ export default function PatientFillFormPage() {
       </div>
 
       <div className="screen-only max-w-lg mx-auto space-y-5">
-        <div className="bg-white rounded-2xl border border-gray-200 p-5 flex items-center gap-3">
+        {/* Wraps on phones: the buttons drop below instead of squeezing the title. */}
+        <div className="bg-white rounded-2xl border border-gray-200 p-5 flex flex-wrap items-center gap-3">
           {form.logo_url ? (
             <img src={form.logo_url} alt="Clinic logo" className="w-14 h-14 rounded-xl object-cover border border-gray-200" />
           ) : (
@@ -338,11 +343,11 @@ export default function PatientFillFormPage() {
               <span className="text-xl font-semibold text-blue-600">{(form.doctor_name || "D")[0]?.toUpperCase()}</span>
             </div>
           )}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-[10rem]">
             <h1 className="text-lg font-semibold text-gray-900">Patient Intake Form</h1>
             <p className="text-sm text-gray-600">{form.doctor_name ? `Dr. ${form.doctor_name}` : "Your Doctor"}</p>
           </div>
-          <div className="shrink-0 flex items-center gap-2">
+          <div className="shrink-0 ml-auto flex items-center gap-2">
             {locked && (
               <button type="button" onClick={() => setEditingAfterSubmit(true)} title="Edit your answers" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-sm font-medium text-white hover:bg-blue-700">
                 <Pencil className="w-4 h-4" /> Edit
@@ -441,7 +446,7 @@ export default function PatientFillFormPage() {
                         onChange={(e) => handleChange(field.key, e.target.value)}
                         required={field.required}
                         rows={3}
-                        placeholder={`Enter ${field.label.toLowerCase()}...`}
+                        placeholder={field.patient_editable ? `Enter ${field.label.toLowerCase()}...` : "—"}
                         className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none resize-none"
                       />
                     ) : field.type === "date" ? (
@@ -472,7 +477,7 @@ export default function PatientFillFormPage() {
                         value={(values[field.key] as string) || ""}
                         onChange={(e) => handleChange(field.key, e.target.value)}
                         required={field.required}
-                        placeholder={`Enter ${field.label.toLowerCase()}...`}
+                        placeholder={field.patient_editable ? `Enter ${field.label.toLowerCase()}...` : "—"}
                         className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
                       />
                     )}

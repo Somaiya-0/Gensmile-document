@@ -36,6 +36,7 @@ import { PageLoader } from "@/components/ui/spinner"
 import type { FieldConfig, PatientDocumentFileRead, PatientDocumentPublicRead } from "@/lib/api-types"
 import { YesNoBoxes, yesNoLabel } from "@/components/ui/yes-no"
 import { ModalExit } from "@/components/ui/modal-exit"
+import { formatVisitDate } from "@/lib/dates"
 
 const SECTION_ORDER_FALLBACK = 999
 
@@ -152,7 +153,7 @@ function PatientInfoField({
         />
       ) : (
         <div className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-700 min-h-[46px] flex items-center min-w-0 [overflow-wrap:anywhere]">
-          {value || "—"}
+          {(type === "date" ? formatVisitDate(value) : value) || "—"}
         </div>
       )}
     </div>
@@ -565,6 +566,9 @@ export default function DoctorToDoctorSharePage() {
 
       <div className="screen-only">
       <div className="max-w-6xl mx-auto space-y-6">
+        <Link to="/dashboard/shared" className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-blue-600">
+          <ArrowLeft className="w-4 h-4" /> Shared Documents
+        </Link>
         <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6 shadow-sm">
           {/* Wraps on phones: the action buttons drop below instead of squeezing the title. */}
           <div className="flex flex-wrap items-start gap-4">
@@ -587,7 +591,7 @@ export default function DoctorToDoctorSharePage() {
                 {document.visit_date && (
                   <div className="flex items-center gap-2">
                     <Calendar className="w-4 h-4 text-gray-400" />
-                    <p className="text-xs text-gray-500">Visit: {formatDate(document.visit_date)}</p>
+                    <p className="text-xs text-gray-500">Visit: {formatVisitDate(document.visit_date)}</p>
                   </div>
                 )}
               </div>

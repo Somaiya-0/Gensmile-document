@@ -100,7 +100,8 @@ class PatientDocument(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     # --- Patient self-fill link ---
     fill_token: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
-    fill_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Off until the doctor shares it with the patient (Share to Patient).
+    fill_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     patient_submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships

@@ -32,6 +32,7 @@ import { saveBlobAsFile } from "@/lib/utils"
 import { ChangeHistoryModal } from "@/components/dashboard/change-history-modal"
 import { YesNoBoxes, yesNoLabel } from "@/components/ui/yes-no"
 import { ModalExit } from "@/components/ui/modal-exit"
+import { formatVisitDate, todayISO } from "@/lib/dates"
 
 // "select" (Dropdown) is intentionally left out -- no longer offered as a
 // type for new fields. FIELD_TYPE_LABELS below still needs a "select" entry
@@ -41,10 +42,6 @@ const FIELD_TYPES: FieldConfig["type"][] = ["text", "textarea", "checkbox", "dat
 
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : "Something went wrong."
-}
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10)
 }
 
 export function getDocStatus(doc: PatientDocumentRead): { label: string; color: string } {
@@ -478,6 +475,7 @@ export function FormSettingsModal({
       showDenyButton: true,
       showCancelButton: true,
       confirmButtonText: "Save to this document",
+      confirmButtonColor: "#2563eb",
       denyButtonText: "Just this once",
       denyButtonColor: "#6b7280",
       cancelButtonText: "Keep editing",
@@ -621,7 +619,7 @@ export function FormSettingsModal({
             <h3 className="text-base font-semibold text-gray-900">{isDefault || draft ? "Form Settings" : "Edit Form"}</h3>
             <p className="text-xs text-gray-500">Customize what fields appear on your form</p>
           </div>
-          <button onClick={() => void handleClose()} className="p-2 rounded-lg hover:bg-gray-100"><X className="w-4 h-4" /></button>
+          <button onClick={() => void handleClose()} aria-label="Close" className="p-2 rounded-lg hover:bg-gray-100"><X className="w-4 h-4" /></button>
         </div>
         <div className="overflow-y-auto overscroll-none px-6 py-4 space-y-4">
           {loading ? (
@@ -1047,6 +1045,11 @@ function DocumentDetailModal({
       }
       setShareCopied(audience)
       setTimeout(() => setShareCopied(null), 2000)
+      void Swal.fire({
+        toast: true, position: "top", icon: "success", showConfirmButton: false, timer: 2500,
+        title: audience === "patient" ? "Patient link copied" : "Doctor link copied",
+        text: "Paste it into an email or message to send it.",
+      })
     } catch (error) {
       Swal.fire({ icon: "error", title: "Couldn't create share link", text: errMsg(error) })
     } finally {
@@ -1093,7 +1096,7 @@ function DocumentDetailModal({
     if (!editing) {
       return (
         <FieldShell label={label}>
-          <div className={displayBoxClass}>{value || "—"}</div>
+          <div className={displayBoxClass}>{(type === "date" ? formatVisitDate(value) : value) || "—"}</div>
         </FieldShell>
       )
     }
@@ -1167,7 +1170,7 @@ function DocumentDetailModal({
             </div>
             <div>
               <h2 className="text-lg font-semibold text-gray-900">{document.patient_name}</h2>
-              <p className="text-xs text-gray-500">{document.visit_date ? new Date(document.visit_date).toLocaleDateString() : "No date"}</p>
+              <p className="text-xs text-gray-500">{formatVisitDate(document.visit_date) || "No date"}</p>
             </div>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
@@ -1231,7 +1234,7 @@ function DocumentDetailModal({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <button onClick={requestClose} className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 shrink-0"><X className="w-4 h-4" /></button>
+            <button onClick={requestClose} aria-label="Close" className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 shrink-0"><X className="w-4 h-4" /></button>
           </div>
         </div>
 
@@ -1466,10 +1469,10 @@ function ShareToDoctorPanel({
     setCreatingPatient(true)
     try {
       const newDoc = await createPatientDocument(token, { patient_name: newPatientName.trim() })
-      // Created from Doctor to Doctor: list it there too (Doctor to Patient
-      // is on by default). From Doctor to Patient it stays patient-only until
-      // a doctor link is generated.
+      // New documents start unshared (a draft). Created from Doctor to Doctor
+      // or Doctor to Patient, turn that link on so it lists there.
       if (context === "doctor-to-doctor") await toggleDocumentSharing(token, newDoc.id, true)
+      if (context === "doctor-to-patient") await toggleFillLink(token, newDoc.id, true)
       onRefresh?.()
       setShowNewPatientModal(false)
       setNewPatientName("")
@@ -1556,7 +1559,7 @@ function ShareToDoctorPanel({
               {patientDocs.map((doc) => (
                 <button key={doc.id} onClick={() => handlePickPatientDoc(doc)} className="w-full text-left flex items-center justify-between gap-2 rounded-lg border border-gray-200 px-3 py-2 hover:border-blue-400 hover:bg-blue-50">
                   <span className="text-xs text-gray-700">
-                    {doc.visit_date || new Date(doc.created_at).toLocaleDateString()} · {doc.files?.length || 0} file{doc.files?.length === 1 ? "" : "s"}
+                    {formatVisitDate(doc.visit_date) || new Date(doc.created_at).toLocaleDateString()} · {doc.files?.length || 0} file{doc.files?.length === 1 ? "" : "s"}
                     {doc.is_shared && <span className="ml-1.5 text-[10px] text-blue-600 font-medium">Sent to Doctor</span>}
                   </span>
                   <ChevronDown className="w-3.5 h-3.5 text-gray-400 -rotate-90" />
@@ -2087,10 +2090,11 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
     try {
       const payload = { ...formData, visit_date: formData.visit_date || null, custom_fields: customFields, ...(draftFormFields?.permanent ? { form_config: draftFormFields.fields } : {}) } as PatientDocumentCreate
       const created = await createPatientDocument(token, payload)
-      // Created from Doctor to Doctor: list it there too (Doctor to Patient
-      // is on by default). From Doctor to Patient it stays patient-only until
-      // a doctor link is generated.
-      const newDoc = mode === "doctor-to-doctor" ? await toggleDocumentSharing(token, created.id, true) : created
+      // New documents start unshared (a draft). Created from Doctor to Doctor
+      // or Doctor to Patient, turn that link on so it lists there.
+      const newDoc = mode === "doctor-to-doctor" ? await toggleDocumentSharing(token, created.id, true)
+        : mode === "doctor-to-patient" ? await toggleFillLink(token, created.id, true)
+        : created
       // List it right away; its files show a progress bar while they upload.
       const total = (logo ? 1 : 0) + files.length
       let done = 0
@@ -2176,7 +2180,15 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
   const handleUpdateDocument = (updated: PatientDocumentRead) => { setSelectedDoc(updated); refreshDocuments() }
 
   const handleDeleteDocument = async (docId: string) => {
-    const confirmed = await Swal.fire({ icon: "warning", title: "Delete?", showCancelButton: true, confirmButtonText: "Delete", confirmButtonColor: "#dc2626" })
+    const name = documents.find((d) => d.id === docId)?.patient_name || "this patient"
+    const confirmed = await Swal.fire({
+      icon: "warning",
+      title: `Delete ${name}'s document?`,
+      text: "The form, its history and every attached file are deleted permanently. This can't be undone.",
+      showCancelButton: true,
+      confirmButtonText: "Delete permanently",
+      confirmButtonColor: "#dc2626",
+    })
     if (!confirmed.isConfirmed) return
     try {
       await deletePatientDocument(token, docId)
@@ -2382,7 +2394,7 @@ export function PatientDocumentsPage({ mode = "all" }: PatientDocumentsPageProps
           <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
               <h2 className="text-base font-semibold text-gray-900">New Document</h2>
-              <button onClick={requestCloseCreate} className="text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
+              <button onClick={requestCloseCreate} aria-label="Close" className="text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
             </div>
             <div className="space-y-6 overflow-y-auto overscroll-none px-6 py-5">
               <ShareToDoctorPanel
@@ -2521,9 +2533,10 @@ export function PatientDocumentSettingsPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Form Settings</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Default Form</h1>
           <p className="text-sm text-gray-600">
-            Show, hide, relabel, reorder, or add fields on your patient document form.
+            The template every new document starts from. Show, hide, relabel, reorder, or add fields --
+            documents you've already created keep their own form.
           </p>
         </div>
         <div className="flex gap-2">
@@ -2713,7 +2726,7 @@ export function PatientDocumentPrintPage({ documentId }: { documentId: string })
         </div>
         <div>
           <span>Visit Date</span>
-          {doc.visit_date ? new Date(doc.visit_date).toLocaleDateString() : "—"}
+          {formatVisitDate(doc.visit_date) || "—"}
         </div>
         <div>
           <span>Contact</span>

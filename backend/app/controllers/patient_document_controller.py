@@ -1,3 +1,4 @@
+from datetime import date, datetime
 import re
 import copy
 import logging
@@ -203,6 +204,10 @@ def _stringify_value(value: object) -> str | None:
         return None
     if isinstance(value, bool):
         return "Yes" if value else "No"
+    if isinstance(value, (datetime, date)):
+        # Visit dates are calendar days -- compare and show just the day, so
+        # "…00:00:00+00:00" vs "…00:00:00" isn't logged as a change.
+        return value.strftime("%Y-%m-%d")
     return str(value)
 
 

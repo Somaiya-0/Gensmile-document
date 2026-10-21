@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react"
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom"
 import Swal from "sweetalert2"
-import { ChevronDown, FileText, LayoutDashboard, LogOut, Menu, Share2, Stethoscope, UserRound, Users } from "lucide-react"
+import { ChevronDown, FileText, LayoutDashboard, LogOut, Menu, Settings, Share2, Stethoscope, UserRound, Users } from "lucide-react"
 
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -46,6 +46,12 @@ function UserMenu() {
           {user?.email ? <p className="truncate text-xs text-[#6c7787]">{user.email}</p> : null}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        {/* The template every new document starts from -- the only place it's edited. */}
+        {role !== "ADMIN" && (
+          <DropdownMenuItem onClick={() => navigate("/documents/settings")} className="cursor-pointer gap-2">
+            <Settings className="size-4" /> Edit default form
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer gap-2 text-[#b42318] focus:text-[#b42318]">
           <LogOut className="size-4" /> Sign out
         </DropdownMenuItem>
@@ -78,6 +84,12 @@ function useNavItems(): NavItem[] {
   return isAdmin(user?.role) ? [...DOCTOR_NAV_ITEMS, ...ADMIN_NAV_ITEMS] : [...DOCTOR_NAV_ITEMS, SHARED_NAV_ITEM]
 }
 
+// A shared document (/doctor-to-doctor/documents/...) is opened from Shared
+// Documents, so that item stays highlighted while it's open.
+function isNavActive(to: string, pathname: string): boolean {
+  return pathname.startsWith(to) || (to === "/dashboard/shared" && pathname.startsWith("/doctor-to-doctor/documents"))
+}
+
 function MobileNav() {
   const items = useNavItems()
   const navigate = useNavigate()
@@ -95,7 +107,7 @@ function MobileNav() {
             onClick={() => navigate(to)}
             className={[
               "cursor-pointer gap-2",
-              pathname.startsWith(to) ? "text-[#0052cc]" : "",
+              isNavActive(to, pathname) ? "text-[#0052cc]" : "",
             ].join(" ")}
           >
             <Icon className="size-4" /> {label}
@@ -108,6 +120,7 @@ function MobileNav() {
 
 function Sidebar() {
   const items = useNavItems()
+  const { pathname } = useLocation()
 
   return (
     <aside className="hidden w-60 shrink-0 border-r border-[#e6ecf4] bg-white sm:block print:hidden">
@@ -122,7 +135,7 @@ function Sidebar() {
             className={({ isActive }) =>
               [
                 "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
-                isActive
+                isActive || isNavActive(to, pathname)
                   ? "bg-[#eaf1ff] text-[#0052cc]"
                   : "text-[#475569] hover:bg-[#f8fbff] hover:text-[#0f172a]",
               ].join(" ")

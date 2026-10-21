@@ -363,3 +363,9 @@ img {
 #nl-badge-frame {
   display: none !important;
 }
+
+/* SweetAlert2 confirm buttons: brand blue instead of the library's purple.
+   An explicit confirmButtonColor (e.g. red Delete) is inline and still wins. */
+.swal2-styled.swal2-confirm {
+  background-color: #2563eb;
+}

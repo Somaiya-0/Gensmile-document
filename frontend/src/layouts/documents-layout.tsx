@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react"
-import { Outlet, useNavigate } from "react-router-dom"
+import { Link, Outlet, useNavigate } from "react-router-dom"
 import Swal from "sweetalert2"
-import { ChevronDown, LogOut } from "lucide-react"
+import { ArrowLeft, ChevronDown, LogOut } from "lucide-react"
 
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -97,7 +97,10 @@ export default function DocumentsLayout() {
   return (
     <main className="min-h-screen bg-[#f3f5f7]">
       <header className="sticky top-0 z-30 border-b border-[#e6ecf4]/80 bg-white/90 px-4 py-3 shadow-xs backdrop-blur-md sm:px-6">
-        <div className="flex items-center justify-end gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <Link to="/dashboard/documents" className="inline-flex items-center gap-2 text-sm font-medium text-[#0f172a] hover:text-blue-600">
+            <ArrowLeft className="size-4" /> Back to Documents
+          </Link>
           <UserMenu />
         </div>
       </header>
