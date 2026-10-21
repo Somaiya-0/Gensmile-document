@@ -365,7 +365,8 @@ img {
 }
 
 /* SweetAlert2 confirm buttons: brand blue instead of the library's purple.
-   An explicit confirmButtonColor (e.g. red Delete) is inline and still wins. */
+   Set through its own variable: an explicit confirmButtonColor (e.g. red
+   Delete) sets the same variable inline on the button, so it still wins. */
 .swal2-styled.swal2-confirm {
-  background-color: #2563eb;
+  --swal2-confirm-button-background-color: #2563eb;
 }
