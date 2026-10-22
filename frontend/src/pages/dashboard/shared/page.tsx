@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { ChevronRight, Loader2, Share2 } from "lucide-react"
+import { ChevronRight, Link2, Loader2, Share2 } from "lucide-react"
+import Swal from "sweetalert2"
 
-import { PatientDocumentsAccessGuard } from "@/components/dashboard/patient-document-pages"
+import { copyText, PatientDocumentsAccessGuard } from "@/components/dashboard/patient-document-pages"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { listSharedWithMe } from "@/lib/api-client"
 import type { SharedWithMeDocument } from "@/lib/api-types"
@@ -29,6 +30,16 @@ function SharedDocumentsPage() {
   }, [token])
 
   useEffect(() => { void load() }, [load])
+
+  // Pass a shared document on: copies the same doctor-to-doctor link.
+  const copyShareLink = async (shareToken: string) => {
+    const url = `${window.location.origin}/doctor-to-doctor/documents/${shareToken}`
+    if (await copyText(url)) {
+      void Swal.fire({ toast: true, position: "top", icon: "success", title: "Share link copied", showConfirmButton: false, timer: 2000 })
+    } else {
+      void Swal.fire({ icon: "info", title: "Share link", text: "Copy this link:", input: "text", inputValue: url, inputAttributes: { readonly: "true" }, confirmButtonText: "Done", didOpen: () => (Swal.getInput() as HTMLInputElement | null)?.select() })
+    }
+  }
   useAutoRefresh(load, { intervalMs: 60_000 })
 
   return (
@@ -80,7 +91,20 @@ function SharedDocumentsPage() {
                     </td>
                     <td className="hidden px-5 py-3 whitespace-nowrap text-gray-700 sm:table-cell">Dr. {doc.owner_name}</td>
                     <td className="hidden px-5 py-3 text-gray-500 sm:table-cell">{new Date(doc.updated_at).toLocaleDateString()}</td>
-                    <td className="px-4 py-3 text-right sm:px-5"><ChevronRight className="inline-block h-4 w-4 text-gray-300" /></td>
+                    <td className="px-4 py-3 text-right sm:px-5">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); void copyShareLink(doc.share_token) }}
+                          title="Copy share link"
+                          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-50"
+                        >
+                          <Link2 className="h-3.5 w-3.5" />
+                          Share link
+                        </button>
+                        <ChevronRight className="inline-block h-4 w-4 text-gray-300" />
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>

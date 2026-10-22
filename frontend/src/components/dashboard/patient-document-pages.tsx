@@ -294,7 +294,7 @@ function AddFieldModal({
 // Copies text, falling back when the async Clipboard API refuses (e.g.
 // "Document is not focused" once a menu has closed or a request finished).
 // Returns false only if the browser blocked both ways.
-async function copyText(text: string): Promise<boolean> {
+export async function copyText(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text)
     return true
