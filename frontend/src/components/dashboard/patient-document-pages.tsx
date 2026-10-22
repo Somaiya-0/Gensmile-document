@@ -28,7 +28,7 @@ import type {
 import { useAuthStore } from "@/stores/auth-store"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { useDocumentsLiveUpdates } from "@/hooks/use-documents-live-updates"
-import { saveBlobAsFile } from "@/lib/utils"
+import { copyText, saveBlobAsFile } from "@/lib/utils"
 import { ChangeHistoryModal } from "@/components/dashboard/change-history-modal"
 import { YesNoBoxes, yesNoLabel } from "@/components/ui/yes-no"
 import { ModalExit } from "@/components/ui/modal-exit"
@@ -289,33 +289,6 @@ function AddFieldModal({
     </div>
     )}</ModalExit>
   )
-}
-
-// Copies text, falling back when the async Clipboard API refuses (e.g.
-// "Document is not focused" once a menu has closed or a request finished).
-// Returns false only if the browser blocked both ways.
-export async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text)
-    return true
-  } catch {
-    // fall through to the textarea copy
-  }
-  const ta = window.document.createElement("textarea")
-  ta.value = text
-  ta.setAttribute("readonly", "")
-  ta.style.position = "fixed"
-  ta.style.opacity = "0"
-  window.document.body.appendChild(ta)
-  ta.select()
-  let ok = false
-  try {
-    ok = window.document.execCommand("copy")
-  } catch {
-    ok = false
-  }
-  ta.remove()
-  return ok
 }
 
 function useToken(): string {

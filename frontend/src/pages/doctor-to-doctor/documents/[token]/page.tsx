@@ -19,6 +19,7 @@ import {
   LogOut,
   Upload,
   X,
+  Link2,
   MoreVertical,
 } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -30,7 +31,7 @@ import { FormSettingsModal } from "@/components/dashboard/patient-document-pages
 import { ChangeHistoryModal } from "@/components/dashboard/change-history-modal"
 import { usePublicDocumentLiveUpdates } from "@/hooks/use-public-document-live-updates"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
-import { saveBlobAsFile } from "@/lib/utils"
+import { copyText, saveBlobAsFile } from "@/lib/utils"
 import { useAuthStore } from "@/stores/auth-store"
 import { PageLoader } from "@/components/ui/spinner"
 import type { FieldConfig, PatientDocumentFileRead, PatientDocumentPublicRead } from "@/lib/api-types"
@@ -158,6 +159,17 @@ function PatientInfoField({
       )}
     </div>
   )
+}
+
+// Pass a shared document on: copies its doctor-to-doctor link. Used here and
+// on the Shared Documents list.
+export async function copyShareLink(shareToken: string) {
+  const url = `${window.location.origin}/doctor-to-doctor/documents/${shareToken}`
+  if (await copyText(url)) {
+    void Swal.fire({ toast: true, position: "top", icon: "success", title: "Share link copied", showConfirmButton: false, timer: 2000 })
+  } else {
+    void Swal.fire({ icon: "info", title: "Share link", text: "Copy this link:", input: "text", inputValue: url, inputAttributes: { readonly: "true" }, confirmButtonText: "Done", didOpen: () => (Swal.getInput() as HTMLInputElement | null)?.select() })
+  }
 }
 
 export default function DoctorToDoctorSharePage() {
@@ -597,6 +609,16 @@ export default function DoctorToDoctorSharePage() {
               </div>
             </div>
             <div className="shrink-0 ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void copyShareLink(token)}
+                aria-label="Copy share link"
+                title="Copy share link"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50"
+              >
+                <Link2 className="w-4 h-4" />
+                <span className="hidden sm:inline">Share link</span>
+              </button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button type="button" title="More options" className="p-2.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50">

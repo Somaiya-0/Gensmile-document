@@ -86,3 +86,30 @@ export async function saveBlobAsFile(blob: Blob, filename: string) {
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
 }
+
+// Copies text, falling back when the async Clipboard API refuses (e.g.
+// "Document is not focused" once a menu has closed or a request finished).
+// Returns false only if the browser blocked both ways.
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    // fall through to the textarea copy
+  }
+  const ta = window.document.createElement("textarea")
+  ta.value = text
+  ta.setAttribute("readonly", "")
+  ta.style.position = "fixed"
+  ta.style.opacity = "0"
+  window.document.body.appendChild(ta)
+  ta.select()
+  let ok = false
+  try {
+    ok = window.document.execCommand("copy")
+  } catch {
+    ok = false
+  }
+  ta.remove()
+  return ok
+}

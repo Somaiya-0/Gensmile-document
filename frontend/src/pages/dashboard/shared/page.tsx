@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { ChevronRight, Link2, Loader2, Share2 } from "lucide-react"
-import Swal from "sweetalert2"
 
-import { copyText, PatientDocumentsAccessGuard } from "@/components/dashboard/patient-document-pages"
+import { PatientDocumentsAccessGuard } from "@/components/dashboard/patient-document-pages"
+import { copyShareLink } from "@/pages/doctor-to-doctor/documents/[token]/page"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { listSharedWithMe } from "@/lib/api-client"
 import type { SharedWithMeDocument } from "@/lib/api-types"
@@ -30,16 +30,6 @@ function SharedDocumentsPage() {
   }, [token])
 
   useEffect(() => { void load() }, [load])
-
-  // Pass a shared document on: copies the same doctor-to-doctor link.
-  const copyShareLink = async (shareToken: string) => {
-    const url = `${window.location.origin}/doctor-to-doctor/documents/${shareToken}`
-    if (await copyText(url)) {
-      void Swal.fire({ toast: true, position: "top", icon: "success", title: "Share link copied", showConfirmButton: false, timer: 2000 })
-    } else {
-      void Swal.fire({ icon: "info", title: "Share link", text: "Copy this link:", input: "text", inputValue: url, inputAttributes: { readonly: "true" }, confirmButtonText: "Done", didOpen: () => (Swal.getInput() as HTMLInputElement | null)?.select() })
-    }
-  }
   useAutoRefresh(load, { intervalMs: 60_000 })
 
   return (
